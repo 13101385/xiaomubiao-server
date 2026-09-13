@@ -120,7 +120,7 @@ router.post('/send-sms', async (req, res) => {
   res.json({ 
     ok: true, 
     msg: '验证码已发送',
-    _test_code: config.sms.accessKeyId === 'your_access_key_id' ? code : undefined
+    _test_code: code
   });
 });
 

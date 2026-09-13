@@ -1,0 +1,16 @@
+{
+  "compileType": "miniprogram",
+  "libVersion": "3.16.1",
+  "appid": "wxc429c56b256445f7",
+  "projectname": "xiaomubiao",
+  "miniprogramRoot": "../xiaomubiao/",
+  "serverRoot": "../xiaomubiao-server/",
+  "setting": {
+    "urlCheck": true,
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true,
+    "newFeature": true
+  }
+}

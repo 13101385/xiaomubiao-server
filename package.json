@@ -1,0 +1,25 @@
+{
+  "name": "xiaomubiao-server",
+  "version": "1.0.0",
+  "description": "小目标星球 后端服务",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "jest"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "sqlite3": "^5.1.7",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "axios": "^1.6.7"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "supertest": "^6.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

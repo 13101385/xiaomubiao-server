@@ -68,7 +68,8 @@ router.post('/wechat-login', async (req, res) => {
 
 /**
  * POST /api/auth/phone-verify
- * 微信手机号快速验证：用 getPhoneNumber 返回的 code 换取真实手机号
+ * 微信手机号实时验证：用 getRealtimePhoneNumber 返回的 code 换取真实手机号
+ * 说明：实时验证组件对个人主体小程序开放（快速验证 getuserphonenumber 需企业认证）
  */
 router.post('/phone-verify', async (req, res) => {
   const { code } = req.body;
@@ -95,9 +96,9 @@ router.post('/phone-verify', async (req, res) => {
     
     const accessToken = tokenRes.data.access_token;
     
-    // 2. 用 code 换取手机号
+    // 2. 用 code 换取手机号（实时验证接口）
     const phoneRes = await axios.post(
-      'https://api.weixin.qq.com/wxa/business/getuserphonenumber?access_token=' + accessToken,
+      'https://api.weixin.qq.com/phonenumber/getrealtimephonenumber?access_token=' + accessToken,
       { code },
       { timeout: 10000 }
     );
@@ -105,7 +106,7 @@ router.post('/phone-verify', async (req, res) => {
     const data = phoneRes.data;
     
     if (data.errcode) {
-      console.error('[WX] get phone error:', data);
+      console.error('[WX] get realtime phone error:', data);
       return res.status(400).json({ ok: false, msg: '获取手机号失败：' + (data.errmsg || data.errcode) });
     }
     

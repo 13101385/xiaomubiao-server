@@ -1,6 +1,6 @@
 /**
  * 认证路由
- * 提供：微信登录、短信验证码、用户管理
+ * 提供：微信登录、微信手机号验证、用户管理
  */
 const express = require('express');
 const axios = require('axios');
@@ -9,12 +9,9 @@ const router = express.Router();
 const { config } = require('../config');
 const db = require('../db');
 
-// 临时验证码存储（内存，生产环境用 Redis）
-const TEMP_CODES = {};
-
 /**
  * POST /api/auth/wechat-login
- * 微信登录：用 code 换取 openId
+ * 微信登录：用 code 换取 openId（真实 code2session）
  */
 router.post('/wechat-login', async (req, res) => {
   const { code } = req.body;
@@ -31,7 +28,8 @@ router.post('/wechat-login', async (req, res) => {
         secret: config.wx.appsecret,
         js_code: code,
         grant_type: 'authorization_code'
-      }
+      },
+      timeout: 10000
     });
     
     const { openid, unionid, errcode, errmsg } = wxRes.data;
@@ -39,6 +37,10 @@ router.post('/wechat-login', async (req, res) => {
     if (errcode) {
       console.error('[WX] code2session error:', wxRes.data);
       return res.status(400).json({ ok: false, msg: '微信登录失败：' + errmsg });
+    }
+    
+    if (!openid) {
+      return res.status(400).json({ ok: false, msg: '微信登录失败：未获取到 openid' });
     }
     
     // 生成账号 ID
@@ -60,91 +62,59 @@ router.post('/wechat-login', async (req, res) => {
     });
   } catch (err) {
     console.error('[WX] Login error:', err.message);
-    
-    // 如果微信接口调用失败（如未配置 AppSecret），使用模拟模式
-    if (!config.wx.appsecret || config.wx.appsecret === 'your_appsecret_here') {
-      console.log('[WX] Using MOCK mode (no AppSecret configured)');
-      const mockOpenId = 'wx_mock_' + crypto.createHash('md5').update(code).digest('hex').slice(0, 16);
-      const accountId = generateAccountId('wechat', mockOpenId);
-      
-      return res.json({
-        ok: true,
-        user: {
-          accountId,
-          openId: mockOpenId,
-          loginType: 'wechat',
-          name: '',
-          isNew: true,
-          mock: true
-        }
-      });
-    }
-    
-    res.status(500).json({ ok: false, msg: '服务器错误' });
+    res.status(500).json({ ok: false, msg: '微信登录失败，请稍后重试' });
   }
 });
 
 /**
- * POST /api/auth/send-sms
- * 发送短信验证码
+ * POST /api/auth/phone-verify
+ * 微信手机号快速验证：用 getPhoneNumber 返回的 code 换取真实手机号
  */
-router.post('/send-sms', async (req, res) => {
-  const { phone } = req.body;
+router.post('/phone-verify', async (req, res) => {
+  const { code } = req.body;
   
-  if (!phone || !/^1[3-9]\d{9}$/.test(phone)) {
-    return res.status(400).json({ ok: false, msg: '请输入正确的手机号' });
+  if (!code) {
+    return res.status(400).json({ ok: false, msg: '缺少 code 参数' });
   }
   
-  // 生成6位验证码
-  const code = String(Math.floor(100000 + Math.random() * 900000));
-  
-  // 存入内存
-  TEMP_CODES[phone] = {
-    code,
-    expiresAt: Date.now() + 5 * 60 * 1000
-  };
-  
-  // 尝试发送真实短信
   try {
-    if (config.sms.accessKeyId && config.sms.accessKeyId !== 'your_access_key_id') {
-      await sendAliyunSms(phone, code);
-      console.log(`[SMS] Sent real SMS to ${phone}: ${code}`);
-    } else {
-      console.log(`[SMS Mock] 验证码: ${code} → ${phone}`);
+    // 1. 获取 access_token
+    const tokenRes = await axios.get('https://api.weixin.qq.com/cgi-bin/token', {
+      params: {
+        grant_type: 'client_credential',
+        appid: config.wx.appid,
+        secret: config.wx.appsecret
+      },
+      timeout: 10000
+    });
+    
+    if (tokenRes.data.errcode) {
+      console.error('[WX] get token error:', tokenRes.data);
+      return res.status(500).json({ ok: false, msg: '获取 access_token 失败' });
     }
-  } catch (err) {
-    console.error('[SMS] Send error:', err.message);
-  }
-  
-  // 测试模式下返回验证码（生产环境不要这样做！）
-  res.json({ 
-    ok: true, 
-    msg: '验证码已发送',
-    _test_code: code
-  });
-});
-
-/**
- * POST /api/auth/phone-login
- * 手机号登录
- */
-router.post('/phone-login', async (req, res) => {
-  const { phone, code } = req.body;
-  
-  if (!phone || !code) {
-    return res.status(400).json({ ok: false, msg: '缺少参数' });
-  }
-  
-  // 验证验证码
-  const stored = TEMP_CODES[phone];
-  if (!stored || stored.code !== code || Date.now() > stored.expiresAt) {
-    return res.status(400).json({ ok: false, msg: '验证码错误' });
-  }
-  
-  // 删除已使用的验证码
-  delete TEMP_CODES[phone];
-  
-  try {
+    
+    const accessToken = tokenRes.data.access_token;
+    
+    // 2. 用 code 换取手机号
+    const phoneRes = await axios.post(
+      'https://api.weixin.qq.com/wxa/business/getuserphonenumber?access_token=' + accessToken,
+      { code },
+      { timeout: 10000 }
+    );
+    
+    const data = phoneRes.data;
+    
+    if (data.errcode) {
+      console.error('[WX] get phone error:', data);
+      return res.status(400).json({ ok: false, msg: '获取手机号失败：' + (data.errmsg || data.errcode) });
+    }
+    
+    const phone = data.phone_info && data.phone_info.purePhoneNumber;
+    if (!phone) {
+      return res.status(400).json({ ok: false, msg: '未获取到手机号' });
+    }
+    
+    // 3. 生成账号并登录
     const accountId = generateAccountId('phone', phone);
     const parent = await db.getParentRecord(accountId);
     const isNew = !parent || !parent.has_registered;
@@ -154,14 +124,15 @@ router.post('/phone-login', async (req, res) => {
       user: {
         accountId,
         phone,
+        openId: '',
         loginType: 'phone',
         name: parent ? parent.parent_name : '',
         isNew
       }
     });
   } catch (err) {
-    console.error('[PHONE] Login error:', err.message);
-    res.status(500).json({ ok: false, msg: '服务器错误' });
+    console.error('[PHONE] Verify error:', err.message);
+    res.status(500).json({ ok: false, msg: '手机号登录失败，请稍后重试' });
   }
 });
 
@@ -228,43 +199,6 @@ function generateAccountId(type, val) {
     hash = ((hash << 5) + hash) + raw.charCodeAt(i);
   }
   return 'acc_' + (hash >>> 0).toString(36);
-}
-
-/**
- * 调用阿里云 SMS
- */
-async function sendAliyunSms(phone, code) {
-  const timestamp = new Date().toISOString();
-  const nonce = crypto.randomBytes(8).toString('hex');
-  
-  // 阿里云 SMS API v2.0 签名
-  const params = {
-    PhoneNumbers: phone,
-    SignName: config.sms.signName,
-    TemplateCode: config.sms.templateCode,
-    TemplateParam: JSON.stringify({ code }),
-    RegionId: 'cn-hangzhou',
-    OutId: `${phone}_${Date.now()}`,
-    'Action': 'SendSms',
-    'Version': '2017-05-25',
-    'AccessKeyId': config.sms.accessKeyId,
-    'Timestamp': timestamp,
-    'SignatureVersion': '1.0',
-    'SignatureNonce': nonce,
-    'Format': 'JSON'
-  };
-  
-  // 按参数名排序
-  const sortedParams = Object.keys(params).sort().map(k => `${encodeURIComponent(k)}=${encodeURIComponent(params[k])}`).join('&');
-  
-  // 计算签名
-  const stringToSign = `GET&%2F&${encodeURIComponent(sortedParams)}`;
-  const sign = crypto.createHmac('sha256', `${config.sms.accessKeySecret}&`).update(stringToSign).digest('base64');
-  
-  // 发送请求
-  await axios.get('https://dysmsapi.aliyuncs.com/', {
-    params: { ...params, Signature: sign }
-  });
 }
 
 module.exports = router;

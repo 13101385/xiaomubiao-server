@@ -274,7 +274,7 @@ router.get('/list', async (req, res) => {
       title: r.title,
       createdAt: r.created_at
     }));
-    res.json({ ok: true, list });
+    res.json({ ok: true, data: { list } });
   } catch (err) {
     console.error('[EXAM] list error:', err.message);
     res.status(500).json({ ok: false, msg: '获取试卷列表失败' });

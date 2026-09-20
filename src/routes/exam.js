@@ -1,6 +1,6 @@
 /**
  * 试卷路由
- * 提供：AI 生成试卷（agnes）、试卷列表、详情、删除
+ * 提供：AI 生成试卷（agnes）、试卷列表、详情、删除、图片导出
  * 依赖：环境变量 AGNES_AI_API_KEY（agnes API 凭证）
  */
 const express = require('express');
@@ -9,6 +9,9 @@ const crypto = require('crypto');
 const router = express.Router();
 const { config } = require('../config');
 const db = require('../db');
+const path = require('path');
+const fs = require('fs');
+const Jimp = require('jimp');
 
 const DAILY_LIMIT = 20; // 每账号每日生成上限（防 API 费用失控）
 
@@ -273,5 +276,84 @@ router.delete('/:id', async (req, res) => {
     res.status(500).json({ ok: false, msg: '删除失败' });
   }
 });
+
+
+/**
+ * GET /api/exam/:id/image?accountId=xxx&showAnswer=0|1
+ * 导出试卷为 PNG 图片
+ */
+/**
+ * GET /api/exam/:id/image?accountId=xxx&showAnswer=0|1
+ * 生成试卷 HTML（供前端渲染）
+ */
+router.get('/:id/html', async (req, res) => {
+  const { accountId, showAnswer = '0' } = req.query;
+  if (!accountId) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
+
+  try {
+    const row = await db.getExam(req.params.id, accountId);
+    if (!row) return res.status(404).json({ ok: false, msg: '试卷不存在' });
+
+    let content = {};
+    try { content = JSON.parse(row.content); } catch (e) {}
+
+    // 生成 HTML
+    let html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body { font-family: "Microsoft YaHei", sans-serif; max-width: 750px; margin: 0 auto; padding: 20px; background: #fff; }
+    .title { text-align: center; font-size: 28px; font-weight: bold; margin-bottom: 10px; }
+    .meta { text-align: center; font-size: 16px; color: #666; margin-bottom: 30px; }
+    .section-title { font-size: 20px; font-weight: bold; color: #3E8EF7; margin: 20px 0 10px; }
+    .section-desc { font-size: 14px; color: #888; margin-bottom: 15px; }
+    .question { margin-bottom: 20px; }
+    .q-text { font-size: 18px; margin-bottom: 8px; }
+    .options { margin-left: 20px; }
+    .option { font-size: 16px; margin: 5px 0; }
+    .answer { font-size: 16px; color: #38A169; margin-top: 8px; padding: 8px; background: #F0FFF4; border-radius: 4px; }
+    .score { font-size: 14px; color: #999; float: right; }
+  </style>
+</head>
+<body>
+  <div class="title">${content.title || '试卷'}</div>
+  <div class="meta">${content.subject} · ${content.grade} · ${content.durationMin || 60}分钟</div>
+`;
+
+    for (const section of (content.sections || [])) {
+      html += `<div class="section-title">${section.name}</div>`;
+      if (section.instructions) html += `<div class="section-desc">${section.instructions}</div>`;
+      
+      for (let i = 0; i < (section.questions || []).length; i++) {
+        const q = section.questions[i];
+        html += `<div class="question"><span class="score">(${q.score || 0}分)</span><div class="q-text">${i + 1}. ${q.q}</div>`;
+        
+        if (q.options?.length > 0) {
+          html += '<div class="options">';
+          q.options.forEach((opt, oi) => {
+            html += `<div class="option">${['A','B','C','D'][oi]}. ${opt}</div>`;
+          });
+          html += '</div>';
+        }
+        
+        if (showAnswer === '1' && q.answer) {
+          html += `<div class="answer">答案：${q.answer}</div>`;
+        }
+        
+        html += '</div>';
+      }
+    }
+
+    html += '</body></html>';
+
+    res.set('Content-Type', 'text/html; charset=utf-8');
+    res.send(html);
+  } catch (err) {
+    console.error('[EXAM] html error:', err.message);
+    res.status(500).json({ ok: false, msg: '生成失败：' + err.message });
+  }
+});;
 
 module.exports = router;

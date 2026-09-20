@@ -24,6 +24,7 @@ const helmet = require('helmet');
 const { config } = require('./config');
 const db = require('./db');
 const authRoutes = require('./routes/auth');
+const examRoutes = require('./routes/exam');
 
 const app = express();
 const PORT = config.port;
@@ -40,6 +41,7 @@ app.get('/health', (req, res) => {
 
 // API 路由
 app.use('/api/auth', authRoutes);
+app.use('/api/exam', examRoutes);
 
 // 错误处理
 app.use((err, req, res, next) => {

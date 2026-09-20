@@ -26,6 +26,14 @@ const config = {
   // 数据库
   db: {
     path: process.env.DB_PATH || './data/xiaomubiao.db'
+  },
+
+  // agnes AI（试卷生成）
+  agnes: {
+    apiKey: process.env.AGNES_AI_API_KEY || '',
+    baseURL: process.env.AGNES_BASE_URL || 'https://apihub.agnes-ai.com/v1',
+    model: process.env.AGNES_MODEL || 'agnes-2.5-flash',
+    timeoutMs: Number(process.env.AGNES_TIMEOUT_MS || 120000)
   }
 };
 

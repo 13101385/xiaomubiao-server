@@ -28,14 +28,16 @@ function createTables() {
   const tables = [
     'CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, open_id TEXT UNIQUE, phone TEXT UNIQUE, login_type TEXT NOT NULL, name TEXT DEFAULT \'\', pin_hash TEXT DEFAULT \'\', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS parent_records (account_id TEXT PRIMARY KEY, parent_name TEXT NOT NULL, pin_hash TEXT NOT NULL, has_registered INTEGER DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)',
-    'CREATE TABLE IF NOT EXISTS sms_codes (phone TEXT NOT NULL, code TEXT NOT NULL, expires_at INTEGER NOT NULL, used INTEGER DEFAULT 0, created_at INTEGER NOT NULL)'
+    'CREATE TABLE IF NOT EXISTS sms_codes (phone TEXT NOT NULL, code TEXT NOT NULL, expires_at INTEGER NOT NULL, used INTEGER DEFAULT 0, created_at INTEGER NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS exams (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, open_id TEXT DEFAULT \'\', subject TEXT NOT NULL, grade TEXT NOT NULL, title TEXT NOT NULL, config TEXT NOT NULL, content TEXT NOT NULL, created_at INTEGER NOT NULL)'
   ];
   
   const indexes = [
     'CREATE INDEX IF NOT EXISTS idx_users_open_id ON users(open_id)',
     'CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone)',
     'CREATE INDEX IF NOT EXISTS idx_sms_codes_phone ON sms_codes(phone)',
-    'CREATE INDEX IF NOT EXISTS idx_sms_codes_expires ON sms_codes(expires_at)'
+    'CREATE INDEX IF NOT EXISTS idx_sms_codes_expires ON sms_codes(expires_at)',
+    'CREATE INDEX IF NOT EXISTS idx_exams_account ON exams(account_id)'
   ];
   
   return new Promise((resolve, reject) => {
@@ -206,6 +208,73 @@ function isParentRegistered(accountId) {
   });
 }
 
+/* ==================== 试卷（exams） ==================== */
+
+function createExam(exam) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'INSERT INTO exams (id, account_id, open_id, subject, grade, title, config, content, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [exam.id, exam.accountId, exam.openId || '', exam.subject, exam.grade, exam.title, exam.config, exam.content, exam.createdAt],
+      (err) => {
+        if (err) reject(err);
+        else resolve(exam);
+      }
+    );
+  });
+}
+
+function listExams(accountId) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      'SELECT id, account_id, subject, grade, title, created_at FROM exams WHERE account_id = ? ORDER BY created_at DESC LIMIT 100',
+      [accountId],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      }
+    );
+  });
+}
+
+function getExam(examId, accountId) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      'SELECT * FROM exams WHERE id = ? AND account_id = ?',
+      [examId, accountId],
+      (err, row) => {
+        if (err) reject(err);
+        else resolve(row || null);
+      }
+    );
+  });
+}
+
+function deleteExam(examId, accountId) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'DELETE FROM exams WHERE id = ? AND account_id = ?',
+      [examId, accountId],
+      function (err) {
+        if (err) reject(err);
+        else resolve(this.changes > 0);
+      }
+    );
+  });
+}
+
+function countExamsToday(accountId, startOfDay) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      'SELECT COUNT(*) AS n FROM exams WHERE account_id = ? AND created_at >= ?',
+      [accountId, startOfDay],
+      (err, row) => {
+        if (err) reject(err);
+        else resolve(row ? row.n : 0);
+      }
+    );
+  });
+}
+
 function close() {
   return new Promise((resolve, reject) => {
     if (db) {
@@ -223,5 +292,6 @@ module.exports = {
   init, close,
   getUserByOpenId, getUserByPhone, upsertUser, updateUserName,
   saveSmsCode, verifySmsCode,
-  getParentRecord, saveParentRecord, isParentRegistered
+  getParentRecord, saveParentRecord, isParentRegistered,
+  createExam, listExams, getExam, deleteExam, countExamsToday
 };

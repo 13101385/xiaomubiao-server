@@ -362,6 +362,8 @@ router.get('/:id/html', async (req, res) => {
  * GET /api/exam/:id/pdf?accountId=xxx&showAnswer=0|1
  * 导出试卷为 PDF
  */
+const CHINESE_FONT = path.join(__dirname, '..', 'fonts', 'SourceHanSansSC-Regular.otf');
+
 router.get('/:id/pdf', async (req, res) => {
   const { accountId, showAnswer = '0' } = req.query;
   if (!accountId) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
@@ -377,7 +379,8 @@ router.get('/:id/pdf', async (req, res) => {
     const doc = new PDFDocument({ 
       margin: 50,
       size: 'A4',
-      info: { Title: content.title || '试卷', Author: '成长趣味' }
+      info: { Title: '试卷', Author: '成长趣味' },
+      font: CHINESE_FONT
     });
 
     const buffers = [];

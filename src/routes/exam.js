@@ -12,6 +12,7 @@ const db = require('../db');
 const path = require('path');
 const fs = require('fs');
 const Jimp = require('jimp');
+const PDFDocument = require('pdfkit');
 
 const DAILY_LIMIT = 20; // 每账号每日生成上限（防 API 费用失控）
 
@@ -355,5 +356,84 @@ router.get('/:id/html', async (req, res) => {
     res.status(500).json({ ok: false, msg: '生成失败：' + err.message });
   }
 });;
+
+
+/**
+ * GET /api/exam/:id/pdf?accountId=xxx&showAnswer=0|1
+ * 导出试卷为 PDF
+ */
+router.get('/:id/pdf', async (req, res) => {
+  const { accountId, showAnswer = '0' } = req.query;
+  if (!accountId) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
+
+  try {
+    const row = await db.getExam(req.params.id, accountId);
+    if (!row) return res.status(404).json({ ok: false, msg: '试卷不存在' });
+
+    let content = {};
+    try { content = JSON.parse(row.content); } catch (e) {}
+
+    // 创建 PDF 文档
+    const doc = new PDFDocument({ 
+      margin: 50,
+      size: 'A4',
+      info: { Title: content.title || '试卷', Author: '成长趣味' }
+    });
+
+    const buffers = [];
+    doc.on('data', buffers.push.bind(buffers));
+    doc.on('end', () => {
+      const pdfBuffer = Buffer.concat(buffers);
+      res.set('Content-Type', 'application/pdf');
+      res.set('Content-Disposition', 'attachment; filename="' + encodeURIComponent(content.title || '试卷') + '.pdf"');
+      res.send(pdfBuffer);
+    });
+
+    // 标题
+    doc.fontSize(22).text(content.title || '试卷', { align: 'center', bottom: 80 });
+    
+    // 元信息
+    doc.fontSize(12).text(`${content.subject} · ${content.grade} · ${content.durationMin || 60}分钟`, { align: 'center', bottom: 50 });
+    doc.moveDown();
+
+    // 题目内容
+    for (const section of (content.sections || [])) {
+      doc.fontSize(16).text(section.name, { underline: true });
+      doc.moveDown(0.5);
+      
+      if (section.instructions) {
+        doc.fontSize(10).text(section.instructions, { italics: true, color: '#666666' });
+        doc.moveDown(0.5);
+      }
+
+      for (let i = 0; i < (section.questions || []).length; i++) {
+        const q = section.questions[i];
+        const scoreText = q.score ? ` (${q.score}分)` : '';
+        
+        doc.fontSize(12).text(`${i + 1}.${scoreText} ${q.q}`);
+        doc.moveDown(0.3);
+
+        // 选项
+        if (q.options?.length > 0) {
+          doc.fontSize(11).text(q.options.map((opt, oi) => `  ${['A','B','C','D'][oi]}. ${opt}`).join('    '));
+          doc.moveDown(0.5);
+        } else {
+          doc.moveDown(0.5);
+        }
+
+        // 答案
+        if (showAnswer === '1' && q.answer) {
+          doc.fontSize(10).text(`参考答案：${String(q.answer).slice(0, 100)}`, { color: '#38A169' });
+          doc.moveDown(0.5);
+        }
+      }
+    }
+
+    doc.end();
+  } catch (err) {
+    console.error('[EXAM] pdf error:', err.message);
+    res.status(500).json({ ok: false, msg: 'PDF 生成失败：' + err.message });
+  }
+});
 
 module.exports = router;

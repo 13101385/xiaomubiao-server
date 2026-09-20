@@ -112,21 +112,14 @@ function buildPrompt(params) {
     `${s.name} ${s.count} 题，每题 ${s.score} 分`
   ).join('；');
 
-  return `请为「${grade}·${subject}」生成一份${difficulty}难度的试卷。
+  return `为「${grade}·${subject}」生成一份${difficulty}难度试卷。
+知识点：${knowledge || '该年级核心知识点'}
+时长：${durationMin}分钟。
 
-【命题要求】
-- 知识点范围：${knowledge || '覆盖该年级该学科核心知识点'}
-- 严格依据中国义务教育课程标准，题目准确、无超纲、无歧义
-- 各题要由浅入深，有一定区分度
-- 选择题必须给出 4 个选项（A/B/C/D），且只有一个正确答案
-- 计算题需包含适当步骤；作文题给出题目和要求
-- 时长 ${durationMin} 分钟，满分尽可能接近 100 分
-- 重要：题目与答案文本中一律不要使用换行符，较长的表述用中文顿号、分号连接
+【必须严格生成的题型和数量】
+${sectionDesc || '（未选择任何题型）'}
 
-【题型与题量】
-${sectionDesc}
-
-【输出格式】严格输出如下 JSON 结构（不要输出任何其他文字）：
+【JSON格式】只输出JSON，不要任何其他文字：
 {
   "title": "试卷标题",
   "subject": "${subject}",
@@ -134,60 +127,15 @@ ${sectionDesc}
   "difficulty": "${difficulty}",
   "durationMin": ${durationMin},
   "sections": [
-    {
-      "name": "一、选择题",
-      "type": "choice",
-      "scorePer": 2,
-      "instructions": "本大题共X小题，每小题2分",
+    ${sections.map(s => `{
+      "name": "${s.name}",
+      "type": "${s.type}",
+      "scorePer": ${s.score},
+      "instructions": "${s.name}共${s.count}小题",
       "questions": [
-        { "q": "题目文字", "options": ["选项A", "选项B", "选项C", "选项D"], "answer": "C", "score": 2, "analysis": "简要解析" }
+        ${Array(s.count).fill('{ "q": "题目", "options": ["A","B","C","D"], "answer": "A", "score": 2 }').join(',\n        ')}
       ]
-    },
-    {
-      "name": "二、填空题",
-      "type": "fill",
-      "scorePer": 2,
-      "instructions": "本大题共X小题",
-      "questions": [
-        { "q": "题目文字（用____表示空格）", "answer": "答案", "score": 2, "analysis": "简要解析" }
-      ]
-    },
-    {
-      "name": "三、判断题",
-      "type": "trueFalse",
-      "scorePer": 1,
-      "instructions": "本大题共X小题，正确打√，错误打×",
-      "questions": [
-        { "q": "陈述句", "answer": "√", "score": 1, "analysis": "简要解析" }
-      ]
-    },
-    {
-      "name": "四、简答题",
-      "type": "shortAnswer",
-      "scorePer": 8,
-      "instructions": "本大题共X小题",
-      "questions": [
-        { "q": "问题", "answer": "参考答案", "score": 8, "analysis": "" }
-      ]
-    },
-    {
-      "name": "五、计算题",
-      "type": "calculation",
-      "scorePer": 10,
-      "instructions": "本大题共X小题，要求写出计算过程",
-      "questions": [
-        { "q": "计算题题目", "answer": "详细步骤与答案", "score": 10, "analysis": "" }
-      ]
-    },
-    {
-      "name": "六、作文题",
-      "type": "essay",
-      "scorePer": 30,
-      "instructions": "根据要求写作",
-      "questions": [
-        { "q": "作文题目", "answer": "写作要求与评分参考", "score": 30, "analysis": "" }
-      ]
-    }
+    }`).join(',\n    ')}
   ]
 }`;
 }

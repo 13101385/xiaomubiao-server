@@ -25,6 +25,7 @@ const { config } = require('./config');
 const db = require('./db');
 const authRoutes = require('./routes/auth');
 const examRoutes = require('./routes/exam');
+const posterRoutes = require('./routes/poster');
 
 const app = express();
 const PORT = config.port;
@@ -42,6 +43,7 @@ app.get('/health', (req, res) => {
 // API 路由
 app.use('/api/auth', authRoutes);
 app.use('/api/exam', examRoutes);
+app.use('/api/poster', posterRoutes);
 
 // 错误处理
 app.use((err, req, res, next) => {

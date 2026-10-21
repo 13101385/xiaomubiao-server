@@ -29,7 +29,8 @@ function createTables() {
     'CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, open_id TEXT UNIQUE, phone TEXT UNIQUE, login_type TEXT NOT NULL, name TEXT DEFAULT \'\', pin_hash TEXT DEFAULT \'\', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS parent_records (account_id TEXT PRIMARY KEY, parent_name TEXT NOT NULL, pin_hash TEXT NOT NULL, has_registered INTEGER DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS sms_codes (phone TEXT NOT NULL, code TEXT NOT NULL, expires_at INTEGER NOT NULL, used INTEGER DEFAULT 0, created_at INTEGER NOT NULL)',
-    'CREATE TABLE IF NOT EXISTS exams (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, open_id TEXT DEFAULT \'\', subject TEXT NOT NULL, grade TEXT NOT NULL, title TEXT NOT NULL, config TEXT NOT NULL, content TEXT NOT NULL, created_at INTEGER NOT NULL)'
+    'CREATE TABLE IF NOT EXISTS exams (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, open_id TEXT DEFAULT \'\', subject TEXT NOT NULL, grade TEXT NOT NULL, title TEXT NOT NULL, config TEXT NOT NULL, content TEXT NOT NULL, created_at INTEGER NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS posters (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, open_id TEXT DEFAULT \'\', theme TEXT NOT NULL, grade TEXT NOT NULL, title TEXT NOT NULL, source TEXT NOT NULL, config TEXT NOT NULL, content TEXT NOT NULL, created_at INTEGER NOT NULL)'
   ];
   
   const indexes = [
@@ -37,7 +38,8 @@ function createTables() {
     'CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone)',
     'CREATE INDEX IF NOT EXISTS idx_sms_codes_phone ON sms_codes(phone)',
     'CREATE INDEX IF NOT EXISTS idx_sms_codes_expires ON sms_codes(expires_at)',
-    'CREATE INDEX IF NOT EXISTS idx_exams_account ON exams(account_id)'
+    'CREATE INDEX IF NOT EXISTS idx_exams_account ON exams(account_id)',
+    'CREATE INDEX IF NOT EXISTS idx_posters_account ON posters(account_id)'
   ];
   
   return new Promise((resolve, reject) => {
@@ -275,6 +277,76 @@ function countExamsToday(accountId, startOfDay) {
   });
 }
 
+/* ==================== 手抄报（posters） ==================== */
+
+function createPoster(poster) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'INSERT INTO posters (id, account_id, open_id, theme, grade, title, source, config, content, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [poster.id, poster.accountId, poster.openId || '', poster.theme, poster.grade, poster.title, poster.source, poster.config, poster.content, poster.createdAt],
+      (err) => {
+        if (err) reject(err);
+        else resolve(poster);
+      }
+    );
+  });
+}
+
+function listPosters(accountId) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      'SELECT id, account_id, theme, grade, title, source, created_at FROM posters WHERE account_id = ? ORDER BY created_at DESC LIMIT 100',
+      [accountId],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      }
+    );
+  });
+}
+
+function getPoster(posterId, accountId) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      'SELECT * FROM posters WHERE id = ? AND account_id = ?',
+      [posterId, accountId],
+      (err, row) => {
+        if (err) reject(err);
+        else resolve(row || null);
+      }
+    );
+  });
+}
+
+function deletePoster(posterId, accountId) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'DELETE FROM posters WHERE id = ? AND account_id = ?',
+      [posterId, accountId],
+      function (err) {
+        if (err) reject(err);
+        else resolve(this.changes > 0);
+      }
+    );
+  });
+}
+
+/**
+ * 统计某账号当日 AI 生成的手抄报数量（仅统计 source = 'ai'，本地模板保存不占限额）
+ */
+function countPostersToday(accountId, startOfDay) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      "SELECT COUNT(*) AS n FROM posters WHERE account_id = ? AND source = 'ai' AND created_at >= ?",
+      [accountId, startOfDay],
+      (err, row) => {
+        if (err) reject(err);
+        else resolve(row ? row.n : 0);
+      }
+    );
+  });
+}
+
 function close() {
   return new Promise((resolve, reject) => {
     if (db) {
@@ -293,5 +365,6 @@ module.exports = {
   getUserByOpenId, getUserByPhone, upsertUser, updateUserName,
   saveSmsCode, verifySmsCode,
   getParentRecord, saveParentRecord, isParentRegistered,
-  createExam, listExams, getExam, deleteExam, countExamsToday
+  createExam, listExams, getExam, deleteExam, countExamsToday,
+  createPoster, listPosters, getPoster, deletePoster, countPostersToday
 };

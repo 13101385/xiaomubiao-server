@@ -406,8 +406,226 @@ router.delete('/:id', async (req, res) => {
 /**
  * GET /api/poster/:id/pdf?accountId=xxx
  * 导出手抄报为 PDF（pdfkit + 中文字体）
+ * - 图片版（source='image'）：下载成品图嵌入单页 A4 PDF
+ * - 方案版（source='ai'/'template'）：第 1 页为可打印后手写的空白版式模板，第 2 页为内容参考
  */
 const CHINESE_FONT = path.join(__dirname, '..', 'fonts', 'SourceHanSansSC-Regular.otf');
+const HEX_RE = /^#[0-9a-fA-F]{6}$/;
+const FALLBACK_COLORS = { main: '#E8433A', accent: '#F7C948', bg: '#FFF8E1' };
+
+/** 校验 #RRGGBB 颜色，非法回退默认色 */
+function pickColor(value, fallback) {
+  return HEX_RE.test(String(value || '')) ? value : fallback;
+}
+
+/** 画实心小圆点 */
+function drawDot(doc, x, y, r, color) {
+  doc.fillColor(color).circle(x, y, r).fill();
+}
+
+/** 画实心小方块（旋转 45°） */
+function drawDiamond(doc, x, y, s, color) {
+  doc.fillColor(color).polygon([x, y - s], [x + s, y], [x, y + s], [x - s, y]).fill();
+}
+
+/** 画五角星 */
+function drawStar(doc, cx, cy, r, color) {
+  const pts = [];
+  for (let i = 0; i < 10; i++) {
+    const ang = -Math.PI / 2 + (i * Math.PI) / 5;
+    const rad = i % 2 === 0 ? 1 : 0.46;
+    pts.push([cx + Math.cos(ang) * r * rad, cy + Math.sin(ang) * r * rad]);
+  }
+  doc.fillColor(color).polygon(...pts).fill();
+}
+
+/**
+ * 第 1 页「手抄报版式」：空白模板，供打印后手写
+ * 背景铺色 + 双线装饰边框 + 四角圆点/方块 + 顶部标题横幅 + 中部板块框（大面积留白）+ 底部提示与装饰
+ */
+function drawPosterTemplatePage(doc, ctx) {
+  const { pageW, pageH, mainColor, accentColor, bgColor } = ctx;
+
+  // 背景铺色（淡色）
+  doc.rect(0, 0, pageW, pageH).fill(bgColor);
+
+  // 四周装饰边框：外层细线 + 内层粗线（accent 色）
+  const b = 22;
+  doc.lineWidth(1).strokeColor(accentColor).rect(b, b, pageW - b * 2, pageH - b * 2).stroke();
+  doc.lineWidth(3).strokeColor(accentColor).rect(b + 9, b + 9, pageW - (b + 9) * 2, pageH - (b + 9) * 2).stroke();
+
+  // 四角装饰：圆点 + 小方块
+  [[b + 9, b + 9], [b + 9, pageH - b - 9], [pageW - b - 9, b + 9], [pageW - b - 9, pageH - b - 9]].forEach(([x, y]) => {
+    drawDot(doc, x, y, 5, accentColor);
+    drawDiamond(doc, x, y, 5, mainColor);
+  });
+  [[b, b], [b, pageH - b], [pageW - b, b], [pageW - b, pageH - b]].forEach(([x, y]) => drawDot(doc, x, y, 3, accentColor));
+
+  // 顶部标题区：main 色圆角横幅 + 白字标题/副标题
+  const bannerX = b + 40;
+  const bannerW = pageW - (b + 40) * 2;
+  const bannerH = 100;
+  const bannerY = b + 26;
+  doc.roundedRect(bannerX, bannerY, bannerW, bannerH, 18).fill(mainColor);
+
+  const title = ctx.content.title || ctx.row.title || '手抄报';
+  const subtitle = ctx.content.subtitle || '';
+  doc.fillColor('#FFFFFF');
+  if (subtitle) {
+    doc.fontSize(26).text(title, bannerX, bannerY + 16, { width: bannerW, align: 'center' });
+    doc.fontSize(11.5).text(subtitle, bannerX, bannerY + bannerH - 34, { width: bannerW, align: 'center' });
+  } else {
+    doc.fontSize(28).text(title, bannerX, bannerY + (bannerH - 36) / 2, { width: bannerW, align: 'center' });
+  }
+
+  // 中部板块框：2 列网格（板块多则加行、少则单列），accent 描边、顶部 icon+标题、框内大面积留白
+  const sections = Array.isArray(ctx.content.sections) && ctx.content.sections.length > 0
+    ? ctx.content.sections
+    : [{ icon: '✏️', title: '内容区' }];
+  const boxLeft = b + 34;
+  const boxRight = pageW - b - 34;
+  const gap = 18;
+  const cols = sections.length >= 3 ? 2 : 1;
+  const rows = Math.max(1, Math.ceil(sections.length / cols));
+  const boxW = (boxRight - boxLeft - gap * (cols - 1)) / cols;
+  const boxTop = bannerY + bannerH + 24;
+  const boxBottom = pageH - b - 56; // 底部提示区上沿
+  const boxH = Math.max(90, Math.min(320, (boxBottom - boxTop - gap * (rows - 1)) / rows));
+  // 板块数量少时网格垂直居中
+  const gridH = boxH * rows + gap * (rows - 1);
+  const gridTop = boxTop + Math.max(0, (boxBottom - boxTop - gridH) / 2);
+
+  sections.slice(0, rows * cols).forEach((section, i) => {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const bx = boxLeft + col * (boxW + gap);
+    const by = gridTop + row * (boxH + gap);
+    doc.roundedRect(bx, by, boxW, boxH, 10).lineWidth(2).strokeColor(accentColor).stroke();
+    // 顶部 icon + 板块标题（小字，交替主色/点缀色）
+    const icon = section.icon ? section.icon + ' ' : '';
+    doc.fillColor(i % 2 === 0 ? mainColor : accentColor)
+      .fontSize(13)
+      .text(icon + (section.title || '板块'), bx + 14, by + 12, { width: boxW - 28 });
+    // 标题下细分隔线（淡灰，标出书写区起点）
+    const dividerY = by + Math.max(34, doc.y - by + 6);
+    doc.lineWidth(1).strokeColor('#DCD4BE').moveTo(bx + 14, dividerY).lineTo(bx + boxW - 14, dividerY).stroke();
+    // 框内其余部分大面积留白（供孩子手写，不打印 content/bullets）
+  });
+
+  // 底部小字提示
+  doc.fillColor('#999999').fontSize(10)
+    .text('打印后，按板块标题手写内容、画插图', 0, pageH - 44, { width: pageW, align: 'center' });
+
+  // 页脚小装饰：星形 + 圆点 + 小方块
+  const fy = pageH - b - 16;
+  drawStar(doc, pageW / 2 - 80, fy, 6, accentColor);
+  drawDiamond(doc, pageW / 2 - 40, fy, 4, mainColor);
+  drawDot(doc, pageW / 2, fy, 4, accentColor);
+  drawDiamond(doc, pageW / 2 + 40, fy, 4, mainColor);
+  drawStar(doc, pageW / 2 + 80, fy, 6, accentColor);
+}
+
+/**
+ * 第 2 页「内容参考」：照着写
+ * 板块内容 + bullets、配色色块、装饰建议、书写提示、版面布局说明
+ */
+function drawReferencePage(doc, ctx) {
+  const { pageW, pageH, mainColor, accentColor, bgColor } = ctx;
+  const margin = 46;
+  const contentW = pageW - margin * 2;
+  const bottomLimit = pageH - 50;
+
+  const drawHeader = () => {
+    doc.rect(0, 0, pageW, 60).fill(mainColor);
+    doc.fillColor('#FFFFFF').fontSize(17).text('📖 内容参考（照着写）', 0, 16, { width: pageW, align: 'center' });
+  };
+
+  let y = 0;
+  const fit = (needed) => {
+    if (y + needed > bottomLimit) {
+      doc.addPage();
+      drawHeader();
+      y = 70;
+    }
+  };
+
+  drawHeader();
+  y = 70;
+
+  // 板块：icon + 标题（accent 色）+ content + bullets
+  for (const section of (ctx.content.sections || [])) {
+    const icon = section.icon ? section.icon + ' ' : '';
+    const titleText = icon + (section.title || '板块');
+    fit(doc.heightOfString(titleText, { width: contentW }) + 8);
+    doc.fillColor(accentColor).fontSize(14).text(titleText, margin, y, { width: contentW });
+    y = doc.y + 3;
+    if (section.content) {
+      const need = doc.heightOfString(section.content, { width: contentW, lineGap: 2 }) + 8;
+      fit(need);
+      doc.fillColor('#333333').fontSize(10.5).text(section.content, margin, y, { width: contentW, lineGap: 2 });
+      y = doc.y + 3;
+    }
+    for (const bullet of (section.bullets || [])) {
+      const line = '• ' + bullet;
+      const need = doc.heightOfString(line, { width: contentW - 16, lineGap: 1.5 }) + 6;
+      fit(need);
+      doc.fillColor('#555555').fontSize(10).text(line, margin + 16, y, { width: contentW - 16, lineGap: 1.5 });
+      y = doc.y + 1;
+    }
+    y += 8;
+  }
+
+  // 配色方案：3 个色块
+  fit(70);
+  y += 6;
+  doc.fillColor(mainColor).fontSize(13).text('配色方案', margin, y, { width: contentW });
+  y = doc.y + 6;
+  const swatches = [
+    { label: '主色', hex: mainColor },
+    { label: '点缀色', hex: accentColor },
+    { label: '背景色', hex: bgColor }
+  ];
+  const swatchW = 92;
+  const swatchH = 20;
+  let sx = margin;
+  for (const sw of swatches) {
+    doc.rect(sx, y, swatchW, swatchH).fill(sw.hex);
+    doc.lineWidth(0.5).strokeColor('#CCCCCC').rect(sx, y, swatchW, swatchH).stroke();
+    doc.fillColor('#333333').fontSize(9).text(`${sw.label} ${sw.hex}`, sx, y + swatchH + 3, { width: swatchW, align: 'center' });
+    sx += swatchW + 14;
+  }
+  y += swatchH + 22;
+
+  // 装饰建议
+  if ((ctx.content.decorTips || []).length > 0) {
+    fit(26);
+    doc.fillColor(mainColor).fontSize(13).text('装饰建议', margin, y, { width: contentW });
+    y = doc.y + 5;
+    for (const tip of ctx.content.decorTips) {
+      const need = doc.heightOfString('• ' + tip, { width: contentW - 16, lineGap: 1.5 }) + 6;
+      fit(need);
+      doc.fillColor('#555555').fontSize(10).text('• ' + tip, margin + 16, y, { width: contentW - 16, lineGap: 1.5 });
+      y = doc.y + 1;
+    }
+    y += 6;
+  }
+
+  // 书写提示
+  if (ctx.content.writeTips) {
+    fit(34);
+    doc.fillColor(mainColor).fontSize(13).text('书写提示', margin, y, { width: contentW });
+    y = doc.y + 5;
+    const need = doc.heightOfString(ctx.content.writeTips, { width: contentW, lineGap: 2 }) + 8;
+    fit(need);
+    doc.fillColor('#555555').fontSize(10.5).text(ctx.content.writeTips, margin, y, { width: contentW, lineGap: 2 });
+    y = doc.y + 6;
+  }
+
+  // 底部小字：版面布局说明
+  const layoutDesc = [ctx.content.layout, ctx.content.layoutDesc].filter(Boolean).join('：');
+  doc.fillColor('#999999').fontSize(10)
+    .text('版面布局：' + (layoutDesc || '自由排版'), margin, bottomLimit - 18, { width: contentW, align: 'center' });
+}
 
 router.get('/:id/pdf', async (req, res) => {
   const { accountId } = req.query;
@@ -417,108 +635,90 @@ router.get('/:id/pdf', async (req, res) => {
     const row = await db.getPoster(req.params.id, accountId);
     if (!row) return res.status(404).json({ ok: false, msg: '手抄报不存在' });
 
+    const title = row.title || '手抄报';
+    const sendPdf = (pdfBuffer) => {
+      res.set('Content-Type', 'application/pdf');
+      res.set('Content-Disposition', 'attachment; filename="' + encodeURIComponent(title) + '.pdf"');
+      res.send(pdfBuffer);
+    };
+
+    /* ==================== 图片版：成品图直接嵌入单页 ==================== */
+    if (row.source === 'image') {
+      if (!row.imageUrl) {
+        return res.status(500).json({ ok: false, msg: '该手抄报缺少图片地址，无法导出 PDF' });
+      }
+      // 下载成品图（15s 超时），失败返回友好错误
+      let imageBuffer;
+      try {
+        const resp = await axios.get(row.imageUrl, { responseType: 'arraybuffer', timeout: 15000 });
+        imageBuffer = Buffer.from(resp.data || []);
+      } catch (err) {
+        console.error('[POSTER] pdf 图片下载失败:', err.message);
+        return res.status(500).json({ ok: false, msg: '手抄报图片下载失败，请稍后重试' });
+      }
+      // 校验图片签名（png/jpeg/webp），避免把 HTML 错误页当图片嵌入
+      const sigOk = imageBuffer.length > 12 &&
+        ((imageBuffer[0] === 0x89 && imageBuffer[1] === 0x50 && imageBuffer[2] === 0x4E && imageBuffer[3] === 0x47) ||
+         (imageBuffer[0] === 0xFF && imageBuffer[1] === 0xD8 && imageBuffer[2] === 0xFF) ||
+         (imageBuffer.toString('ascii', 0, 4) === 'RIFF' && imageBuffer.toString('ascii', 8, 12) === 'WEBP'));
+      if (!sigOk) {
+        return res.status(500).json({ ok: false, msg: '手抄报图片数据无效，请重新生成后再导出' });
+      }
+
+      const doc = new PDFDocument({ margin: 0, size: 'A4', info: { Title: title, Author: '成长趣味' } });
+      const buffers = [];
+      doc.on('data', buffers.push.bind(buffers));
+      doc.on('end', () => sendPdf(Buffer.concat(buffers)));
+      const pageW = doc.page.width;
+      const pageH = doc.page.height;
+      let img;
+      try {
+        img = doc.openImage(imageBuffer);
+      } catch (err) {
+        console.error('[POSTER] pdf 图片解析失败:', err.message);
+        return res.status(500).json({ ok: false, msg: '手抄报图片解析失败，请重新生成后再导出' });
+      }
+      // 居中适配 A4 页面，保持宽高比
+      const scale = Math.min(pageW / img.width, pageH / img.height);
+      const w = img.width * scale;
+      const h = img.height * scale;
+      doc.image(img, (pageW - w) / 2, (pageH - h) / 2, { width: w, height: h });
+      doc.end();
+      return;
+    }
+
+    /* ==================== 方案版：两页（版式模板 + 内容参考） ==================== */
     let content = {};
     try { content = JSON.parse(row.content); } catch (e) {}
 
-    // 创建 PDF 文档
-    const doc = new PDFDocument({
-      margin: 50,
-      size: 'A4',
-      info: { Title: row.title, Author: '成长趣味' },
-      font: CHINESE_FONT
-    });
-    doc.font(CHINESE_FONT);
-
-    const buffers = [];
-    doc.on('data', buffers.push.bind(buffers));
-    doc.on('end', () => {
-      const pdfBuffer = Buffer.concat(buffers);
-      res.set('Content-Type', 'application/pdf');
-      res.set('Content-Disposition', 'attachment; filename="' + encodeURIComponent(row.title || '手抄报') + '.pdf"');
-      res.send(pdfBuffer);
-    });
-
-    const pageWidth = doc.page.width;
-    const margin = 50;
-
-    // 配色（校验 #RRGGBB 格式，非法值回退默认）
     const colorScheme = content.colorScheme || {};
-    const hexRe = /^#[0-9a-fA-F]{6}$/;
-    const mainColor = hexRe.test(colorScheme.main || '') ? colorScheme.main : '#E8433A';
-    const accentColor = hexRe.test(colorScheme.accent || '') ? colorScheme.accent : '#F7C948';
+    const mainColor = pickColor(colorScheme.main, FALLBACK_COLORS.main);
+    const accentColor = pickColor(colorScheme.accent, FALLBACK_COLORS.accent);
+    const bgColor = pickColor(colorScheme.bg, FALLBACK_COLORS.bg);
 
-    // 顶部色带 + 标题 + 副标题
-    doc.rect(0, 0, pageWidth, 112).fill(mainColor);
-    doc.fillColor('#FFFFFF');
-    doc.fontSize(26).text(content.title || row.title || '手抄报', { align: 'center', lineGap: 6 });
-    doc.moveDown(0.2);
-    if (content.subtitle) {
-      doc.fontSize(14).text(content.subtitle, { align: 'center' });
-    }
+    const doc = new PDFDocument({ margin: 0, size: 'A4', info: { Title: title, Author: '成长趣味' } });
+    doc.font(CHINESE_FONT);
+    const buffers = [];
+    let pageCount = 1; // 初始页
+    doc.on('data', buffers.push.bind(buffers));
+    doc.on('pageAdded', () => { pageCount++; });
+    doc.on('end', () => {
+      console.log('[POSTER] pdf 生成完成: 页数=' + pageCount + ' 大小=' + Buffer.concat(buffers).length + 'B');
+      sendPdf(Buffer.concat(buffers));
+    });
 
-    // 元信息：主题 · 年级 · 布局
-    doc.fillColor('#333333');
-    doc.moveDown(1);
-    doc.fontSize(11).text(`${row.theme} · ${row.grade}${content.layout ? ' · ' + content.layout : ''}`, { align: 'center' });
-    if (content.layoutDesc) {
-      doc.moveDown(0.3);
-      doc.fontSize(10).text(content.layoutDesc, { align: 'center', color: '#666666' });
-    }
-    doc.moveDown(0.8);
+    const ctx = {
+      pageW: doc.page.width,
+      pageH: doc.page.height,
+      mainColor, accentColor, bgColor,
+      content, row
+    };
 
-    // 板块（标题 + 内容 + 要点）
-    for (const section of (content.sections || [])) {
-      const icon = section.icon ? section.icon + ' ' : '';
-      doc.fontSize(15).text(icon + (section.title || '板块'), { color: accentColor });
-      doc.moveDown(0.3);
-      if (section.content) {
-        doc.fontSize(11).text(section.content, { lineGap: 3 });
-        doc.moveDown(0.3);
-      }
-      for (const bullet of (section.bullets || [])) {
-        doc.fontSize(10.5).text('• ' + bullet, { indent: 12, lineGap: 2 });
-      }
-      doc.moveDown(0.6);
-    }
-
-    // 配色方案（色块 + 色值）
-    doc.moveDown(0.4);
-    doc.fontSize(13).text('配色方案', { color: accentColor });
-    doc.moveDown(0.3);
-    const swatches = [
-      { label: '主色', hex: mainColor },
-      { label: '点缀色', hex: accentColor },
-      { label: '背景色', hex: hexRe.test(colorScheme.bg || '') ? colorScheme.bg : '#FFF8E1' }
-    ];
-    const swatchW = 70;
-    const swatchH = 24;
-    const sy = doc.y;
-    let sx = margin;
-    for (const sw of swatches) {
-      doc.rect(sx, sy, swatchW, swatchH).fill(sw.hex);
-      doc.fillColor('#333333');
-      doc.fontSize(9).text(`${sw.label} ${sw.hex}`, sx, sy + swatchH + 3, { width: swatchW, align: 'center' });
-      sx += swatchW + 18;
-    }
-    doc.y = sy + swatchH + 22;
-    doc.moveDown(0.6);
-
-    // 装饰建议
-    if ((content.decorTips || []).length > 0) {
-      doc.fontSize(13).text('装饰建议', { color: accentColor });
-      doc.moveDown(0.3);
-      for (const tip of content.decorTips) {
-        doc.fontSize(10.5).text('• ' + tip, { indent: 12, lineGap: 2 });
-      }
-      doc.moveDown(0.5);
-    }
-
-    // 书写提示
-    if (content.writeTips) {
-      doc.fontSize(13).text('书写提示', { color: accentColor });
-      doc.moveDown(0.3);
-      doc.fontSize(10.5).text(content.writeTips, { lineGap: 3 });
-    }
+    // 第 1 页：空白手抄报版式模板
+    drawPosterTemplatePage(doc, ctx);
+    // 第 2 页：内容参考
+    doc.addPage();
+    drawReferencePage(doc, ctx);
 
     doc.end();
   } catch (err) {

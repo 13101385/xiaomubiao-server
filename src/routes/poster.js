@@ -13,6 +13,7 @@ const path = require('path');
 const PDFDocument = require('pdfkit');
 
 const DAILY_LIMIT = 20; // 每账号每日 AI 生成上限（防 API 费用失控）
+const IMAGE_DAILY_LIMIT = 10; // 每账号每日 AI 生图上限（生图更贵，独立于文本生成）
 const MAX_CUSTOM_LEN = 500; // 自定义要求最大字数
 const MAX_STYLE_LEN = 50; // 风格描述最大字数
 
@@ -56,6 +57,35 @@ async function callAgnes(prompt) {
     throw new Error('AI 未返回内容');
   }
   return parseJson(content);
+}
+
+/**
+ * 调用 agnes（OpenAI 兼容）文生图，返回生成图片的 url
+ * 返回结构：{ data: [ { url: "https://...", revised_prompt: "..." } ] }
+ */
+async function callAgnesImage(prompt) {
+  const { apiKey, baseURL, timeoutMs } = config.agnes;
+  if (!apiKey) {
+    throw new Error('服务器未配置 AGNES_AI_API_KEY');
+  }
+  const model = process.env.AGNES_IMAGE_MODEL || 'agnes-image-2.5-flash';
+  const resp = await axios.post(baseURL + '/images/generations', {
+    model,
+    prompt,
+    size: '1024x1536'
+  }, {
+    headers: {
+      'Authorization': 'Bearer ' + apiKey,
+      'Content-Type': 'application/json'
+    },
+    timeout: timeoutMs
+  });
+
+  const url = resp.data && resp.data.data && resp.data.data[0] && resp.data.data[0].url;
+  if (!url) {
+    throw new Error('AI 生图未返回图片地址');
+  }
+  return url;
 }
 
 /** 健壮解析 AI 返回的 JSON（剥离围栏、修复裸换行等常见问题，与 exam.js 相同） */
@@ -112,6 +142,28 @@ function buildPrompt(params) {
 - 每个板块的 content 控制在 60~120 字，bullets 2~5 条
 - colorScheme 三个颜色都必须是 #RRGGBB 格式
 - title 控制在 12 个字以内`;
+}
+
+/**
+ * 构造文生图提示词：儿童手抄报成品模板图片
+ * 强调竖版 A4 构图、四周装饰边框、中央标题区与正文区大面积留白（供孩子手写）、适合打印后手写
+ */
+function buildImagePrompt(params) {
+  const { theme, grade, custom = '', style = '' } = params;
+
+  const styleText = String(style).trim() ? String(style).trim() : '卡通可爱';
+  const customText = String(custom).trim() ? `\n【额外要求】${String(custom).trim()}` : '';
+
+  return `请绘制一张「${grade}」主题为「${theme}」的儿童手抄报成品模板图片，用于打印后由孩子手写填字。
+
+【画面要求】
+1. 竖版 A4 纸张构图，比例约 3:4，画面干净整洁，适合打印后手写。
+2. 整体风格：${styleText}，符合 ${grade} 小学生的审美。
+3. 四周设计精美的手抄报装饰边框，边框元素紧扣「${theme}」主题（如节日、季节、学习相关的小插图、花边、气球等）。
+4. 画面中上方预留醒目的标题区：可用装饰性大号美术字写出标题，或留出大块标题空白区域。
+5. 正文区域大面积留白：仅用淡色线条/花边框出 3~4 个板块轮廓，中间保持大块空白，方便孩子用笔手写文字。
+6. 色彩搭配鲜艳明快、和谐统一，主体颜色不超过 3~4 种。
+7. 不要写入大段正文文字、不要出现与主题无关的内容，保持整体留白充足。${customText}`;
 }
 
 /* ==================== 路由 ==================== */
@@ -172,6 +224,61 @@ router.post('/generate', async (req, res) => {
       return res.status(500).json({ ok: false, msg: err.message });
     }
     res.status(500).json({ ok: false, msg: '手抄报生成失败：' + err.message });
+  }
+});
+
+/**
+ * POST /api/poster/generate-image
+ * AI 文生图：直接生成手抄报成品图片并存储
+ * body: { accountId, openId?, theme, grade, style?, custom? }
+ */
+router.post('/generate-image', async (req, res) => {
+  const {
+    accountId, openId = '', theme, grade,
+    custom = '', style = ''
+  } = req.body || {};
+
+  // 参数校验
+  if (!accountId) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
+  if (!theme || !String(theme).trim()) return res.status(400).json({ ok: false, msg: '缺少 theme' });
+  if (!GRADES.includes(grade)) return res.status(400).json({ ok: false, msg: '不支持的年级' });
+  if (String(custom).length > MAX_CUSTOM_LEN) return res.status(400).json({ ok: false, msg: '自定义要求过长（最多' + MAX_CUSTOM_LEN + '字）' });
+  if (String(style).length > MAX_STYLE_LEN) return res.status(400).json({ ok: false, msg: '风格描述过长' });
+
+  try {
+    // 每日生图限额（独立于文本生成限额）
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const todayCount = await db.countImagesToday(accountId, startOfDay.getTime());
+    if (todayCount >= IMAGE_DAILY_LIMIT) {
+      return res.status(429).json({ ok: false, msg: '今日AI生图已达上限（' + IMAGE_DAILY_LIMIT + ' 张），明天再来吧' });
+    }
+
+    const prompt = buildImagePrompt(req.body);
+    const url = await callAgnesImage(prompt);
+
+    const record = {
+      id: 'poster_' + crypto.randomBytes(8).toString('hex'),
+      accountId,
+      openId,
+      theme: String(theme).trim(),
+      grade,
+      title: String(theme).trim() + '手抄报图片',
+      source: 'image',
+      config: JSON.stringify({ theme, grade, style, custom }),
+      content: JSON.stringify({ theme, grade, style, custom, prompt }),
+      imageUrl: url,
+      createdAt: Date.now()
+    };
+    await db.createPoster(record);
+
+    res.json({ ok: true, posterId: record.id });
+  } catch (err) {
+    console.error('[POSTER] generate-image error:', err.message);
+    if (err.message && err.message.indexOf('AGNES') > -1) {
+      return res.status(500).json({ ok: false, msg: err.message });
+    }
+    res.status(500).json({ ok: false, msg: '手抄报图片生成失败：' + err.message });
   }
 });
 
@@ -239,6 +346,7 @@ router.get('/list', async (req, res) => {
       grade: r.grade,
       title: r.title,
       source: r.source,
+      imageUrl: r.imageUrl,
       createdAt: r.created_at
     }));
     res.json({ ok: true, data: { list } });
@@ -268,6 +376,7 @@ router.get('/:id', async (req, res) => {
         grade: row.grade,
         title: row.title,
         source: row.source,
+        imageUrl: row.imageUrl,
         createdAt: row.created_at,
         content
       }

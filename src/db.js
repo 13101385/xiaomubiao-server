@@ -30,7 +30,7 @@ function createTables() {
     'CREATE TABLE IF NOT EXISTS parent_records (account_id TEXT PRIMARY KEY, parent_name TEXT NOT NULL, pin_hash TEXT NOT NULL, has_registered INTEGER DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS sms_codes (phone TEXT NOT NULL, code TEXT NOT NULL, expires_at INTEGER NOT NULL, used INTEGER DEFAULT 0, created_at INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS exams (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, open_id TEXT DEFAULT \'\', subject TEXT NOT NULL, grade TEXT NOT NULL, title TEXT NOT NULL, config TEXT NOT NULL, content TEXT NOT NULL, created_at INTEGER NOT NULL)',
-    'CREATE TABLE IF NOT EXISTS posters (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, open_id TEXT DEFAULT \'\', theme TEXT NOT NULL, grade TEXT NOT NULL, title TEXT NOT NULL, source TEXT NOT NULL, config TEXT NOT NULL, content TEXT NOT NULL, created_at INTEGER NOT NULL)'
+    'CREATE TABLE IF NOT EXISTS posters (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, open_id TEXT DEFAULT \'\', theme TEXT NOT NULL, grade TEXT NOT NULL, title TEXT NOT NULL, source TEXT NOT NULL, config TEXT NOT NULL, content TEXT NOT NULL, image_url TEXT DEFAULT \'\', created_at INTEGER NOT NULL)'
   ];
   
   const indexes = [
@@ -45,7 +45,8 @@ function createTables() {
   return new Promise((resolve, reject) => {
     db.serialize(() => {
       let count = 0;
-      const total = tables.length + indexes.length;
+      // +1：幂等加列 ALTER TABLE
+      const total = tables.length + indexes.length + 1;
       const done = () => {
         count++;
         if (count === total) {
@@ -56,6 +57,14 @@ function createTables() {
       
       tables.forEach(sql => db.run(sql, done));
       indexes.forEach(sql => db.run(sql, done));
+      // 幂等加列：posters 表可能已存在（CREATE TABLE IF NOT EXISTS 不会补列），
+      // 列已存在时 ALTER TABLE 会报错，直接忽略即可
+      db.run("ALTER TABLE posters ADD COLUMN image_url TEXT DEFAULT ''", (err) => {
+        if (err) {
+          console.warn('[DB] posters 加 image_url 列失败（列可能已存在，忽略）:', err.message);
+        }
+        done();
+      });
     });
   });
 }
@@ -282,8 +291,8 @@ function countExamsToday(accountId, startOfDay) {
 function createPoster(poster) {
   return new Promise((resolve, reject) => {
     db.run(
-      'INSERT INTO posters (id, account_id, open_id, theme, grade, title, source, config, content, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [poster.id, poster.accountId, poster.openId || '', poster.theme, poster.grade, poster.title, poster.source, poster.config, poster.content, poster.createdAt],
+      'INSERT INTO posters (id, account_id, open_id, theme, grade, title, source, config, content, image_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [poster.id, poster.accountId, poster.openId || '', poster.theme, poster.grade, poster.title, poster.source, poster.config, poster.content, poster.imageUrl || '', poster.createdAt],
       (err) => {
         if (err) reject(err);
         else resolve(poster);
@@ -295,11 +304,11 @@ function createPoster(poster) {
 function listPosters(accountId) {
   return new Promise((resolve, reject) => {
     db.all(
-      'SELECT id, account_id, theme, grade, title, source, created_at FROM posters WHERE account_id = ? ORDER BY created_at DESC LIMIT 100',
+      'SELECT id, account_id, theme, grade, title, source, image_url, created_at FROM posters WHERE account_id = ? ORDER BY created_at DESC LIMIT 100',
       [accountId],
       (err, rows) => {
         if (err) reject(err);
-        else resolve(rows || []);
+        else resolve((rows || []).map(r => ({ ...r, imageUrl: r.image_url || '' })));
       }
     );
   });
@@ -312,7 +321,7 @@ function getPoster(posterId, accountId) {
       [posterId, accountId],
       (err, row) => {
         if (err) reject(err);
-        else resolve(row || null);
+        else resolve(row ? { ...row, imageUrl: row.image_url || '' } : null);
       }
     );
   });
@@ -347,6 +356,22 @@ function countPostersToday(accountId, startOfDay) {
   });
 }
 
+/**
+ * 统计某账号当日 AI 生图（source = 'image'）数量，用于生图限额（独立于文本生成）
+ */
+function countImagesToday(accountId, startOfDay) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      "SELECT COUNT(*) AS n FROM posters WHERE account_id = ? AND source = 'image' AND created_at >= ?",
+      [accountId, startOfDay],
+      (err, row) => {
+        if (err) reject(err);
+        else resolve(row ? row.n : 0);
+      }
+    );
+  });
+}
+
 function close() {
   return new Promise((resolve, reject) => {
     if (db) {
@@ -366,5 +391,5 @@ module.exports = {
   saveSmsCode, verifySmsCode,
   getParentRecord, saveParentRecord, isParentRegistered,
   createExam, listExams, getExam, deleteExam, countExamsToday,
-  createPoster, listPosters, getPoster, deletePoster, countPostersToday
+  createPoster, listPosters, getPoster, deletePoster, countPostersToday, countImagesToday
 };

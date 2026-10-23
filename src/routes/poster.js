@@ -439,6 +439,18 @@ function drawStar(doc, cx, cy, r, color) {
   doc.fillColor(color).polygon(...pts).fill();
 }
 
+/** 画一朵小花（6 片花瓣 + 花心），用于手抄报装饰 */
+function drawFlower(doc, cx, cy, r, petalColor, centerColor) {
+  const petals = 6;
+  for (let i = 0; i < petals; i++) {
+    const ang = (i / petals) * Math.PI * 2;
+    doc.fillColor(petalColor)
+      .circle(cx + Math.cos(ang) * r * 0.72, cy + Math.sin(ang) * r * 0.72, r * 0.42)
+      .fill();
+  }
+  doc.fillColor(centerColor).circle(cx, cy, r * 0.38).fill();
+}
+
 /**
  * 第 1 页「手抄报版式」：空白模板，供打印后手写
  * 背景铺色 + 双线装饰边框 + 四角圆点/方块 + 顶部标题横幅 + 中部板块框（大面积留白）+ 底部提示与装饰
@@ -454,12 +466,31 @@ function drawPosterTemplatePage(doc, ctx) {
   doc.lineWidth(1).strokeColor(accentColor).rect(b, b, pageW - b * 2, pageH - b * 2).stroke();
   doc.lineWidth(3).strokeColor(accentColor).rect(b + 9, b + 9, pageW - (b + 9) * 2, pageH - (b + 9) * 2).stroke();
 
+  // 花边：虚线内框（手抄报花边感）
+  doc.lineWidth(1.2).strokeColor(accentColor).dash(5, { space: 4 })
+    .rect(b + 17, b + 17, pageW - b * 2 - 34, pageH - b * 2 - 34).stroke();
+  doc.undash();
+
   // 四角装饰：圆点 + 小方块
   [[b + 9, b + 9], [b + 9, pageH - b - 9], [pageW - b - 9, b + 9], [pageW - b - 9, pageH - b - 9]].forEach(([x, y]) => {
     drawDot(doc, x, y, 5, accentColor);
     drawDiamond(doc, x, y, 5, mainColor);
   });
   [[b, b], [b, pageH - b], [pageW - b, b], [pageW - b, pageH - b]].forEach(([x, y]) => drawDot(doc, x, y, 3, accentColor));
+
+  // 小花装饰：四角 + 上下边中间（花边点缀）
+  [[b + 8, b + 8], [b + 8, pageH - b - 8], [pageW - b - 8, b + 8], [pageW - b - 8, pageH - b - 8]].forEach(([x, y]) => {
+    drawFlower(doc, x, y, 9, mainColor, '#FFFFFF');
+  });
+  drawFlower(doc, pageW / 2, b + 6, 8, mainColor, '#FFFFFF');
+  drawFlower(doc, pageW / 2, pageH - b - 6, 8, mainColor, '#FFFFFF');
+
+  // 上/下边零星点缀小圆点
+  for (let i = 0; i < 6; i++) {
+    const ex = 60 + i * ((pageW - 120) / 5);
+    drawDot(doc, ex, b + 4, 2.5, accentColor);
+    drawDot(doc, ex, pageH - b - 4, 2.5, accentColor);
+  }
 
   // 顶部标题区：main 色圆角横幅 + 白字标题/副标题
   const bannerX = b + 40;

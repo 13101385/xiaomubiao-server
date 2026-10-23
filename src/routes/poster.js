@@ -357,6 +357,35 @@ router.get('/list', async (req, res) => {
 });
 
 /**
+ * GET /api/poster/limits?accountId=xxx
+ * 今日剩余生成次数（AI 文字 / AI 生图），供前端展示
+ */
+router.get('/limits', async (req, res) => {
+  const { accountId } = req.query;
+  if (!accountId) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
+  try {
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const [aiUsed, imgUsed] = await Promise.all([
+      db.countPostersToday(accountId, startOfDay.getTime()),
+      db.countImagesToday(accountId, startOfDay.getTime())
+    ]);
+    res.json({
+      ok: true,
+      data: {
+        aiRemain: Math.max(0, DAILY_LIMIT - aiUsed),
+        imageRemain: Math.max(0, IMAGE_DAILY_LIMIT - imgUsed),
+        aiLimit: DAILY_LIMIT,
+        imageLimit: IMAGE_DAILY_LIMIT
+      }
+    });
+  } catch (err) {
+    console.error('[POSTER] limits error:', err.message);
+    res.status(500).json({ ok: false, msg: '获取剩余次数失败' });
+  }
+});
+
+/**
  * GET /api/poster/:id?accountId=xxx
  * 手抄报详情
  */

@@ -478,6 +478,13 @@ function drawPosterTemplatePage(doc, ctx) {
     doc.fontSize(28).text(title, bannerX, bannerY + (bannerH - 36) / 2, { width: bannerW, align: 'center' });
   }
 
+  // 标题横幅两侧装饰星形
+  const bannerCY = bannerY + bannerH / 2;
+  drawStar(doc, bannerX - 26, bannerCY, 8, '#FFFFFF');
+  drawStar(doc, bannerX + bannerW + 26, bannerCY, 8, '#FFFFFF');
+  drawDot(doc, bannerX - 14, bannerCY + 30, 3, '#FFFFFF');
+  drawDot(doc, bannerX + bannerW + 14, bannerCY + 30, 3, '#FFFFFF');
+
   // 中部板块框：2 列网格（板块多则加行、少则单列），accent 描边、顶部 icon+标题、框内大面积留白
   const sections = Array.isArray(ctx.content.sections) && ctx.content.sections.length > 0
     ? ctx.content.sections

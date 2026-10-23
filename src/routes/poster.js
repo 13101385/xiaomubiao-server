@@ -109,7 +109,7 @@ function parseJson(text) {
     );
     return JSON.parse(fixed);
   } catch (e) { /* 继续 */ }
-  throw new Error('AI 返回内容解析失败：' + e.message);
+  throw new Error('AI 返回内容解析失败（返回内容不是有效 JSON）');
 }
 
 /* ==================== Prompt 构造 ==================== */

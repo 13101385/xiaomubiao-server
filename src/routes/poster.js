@@ -497,6 +497,29 @@ router.delete('/:id', async (req, res) => {
 });
 
 /**
+ * POST /api/poster/batch-delete
+ * 批量删除手抄报
+ * body: { accountId, ids: [id1, id2, ...] }
+ */
+router.post('/batch-delete', async (req, res) => {
+  const { accountId, ids } = req.body || {};
+  if (!accountId) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ ok: false, msg: '缺少要删除的 ids' });
+  }
+  // 上限保护：单次最多 50 条
+  const target = ids.slice(0, 50);
+  try {
+    const results = await Promise.all(target.map(id => db.deletePoster(id, accountId)));
+    const deleted = results.filter(Boolean).length;
+    res.json({ ok: true, data: { deleted, failed: target.length - deleted } });
+  } catch (err) {
+    console.error('[POSTER] batch-delete error:', err.message);
+    res.status(500).json({ ok: false, msg: '批量删除失败' });
+  }
+});
+
+/**
  * GET /api/poster/:id/pdf?accountId=xxx
  * 导出手抄报为 PDF（pdfkit + 中文字体）
  * - 图片版（source='image'）：下载成品图嵌入单页 A4 PDF

@@ -25,8 +25,11 @@ const GRADES = ['小学一年级', '小学二年级', '小学三年级', '小学
 
 /**
  * 调用 agnes（OpenAI 兼容）生成手抄报方案
+ * @param {string} prompt 用户提示词
+ * @param {object} opts { plain: 纯文本模式(不强制JSON), maxTokens: 最大token }
  */
-async function callAgnes(prompt) {
+async function callAgnes(prompt, opts) {
+  const { plain = false, maxTokens = 8192 } = opts || {};
   const { apiKey, baseURL, model, timeoutMs } = config.agnes;
   if (!apiKey) {
     throw new Error('服务器未配置 AGNES_AI_API_KEY');
@@ -36,12 +39,14 @@ async function callAgnes(prompt) {
     messages: [
       {
         role: 'system',
-        content: '你是一位优秀的小学手抄报设计老师，擅长为小学生设计主题鲜明、内容健康积极、图文并茂的手抄报方案。你只输出严格 JSON，不输出任何其他文字、markdown 或解释。'
+        content: plain
+          ? '你是小学生手抄报指导老师，回答简洁实用、通俗易懂。'
+          : '你是一位优秀的小学手抄报设计老师，擅长为小学生设计主题鲜明、内容健康积极、图文并茂的手抄报方案。你只输出严格 JSON，不输出任何其他文字、markdown 或解释。'
       },
       { role: 'user', content: prompt }
     ],
     temperature: 0.8,
-    max_tokens: 8192
+    max_tokens: maxTokens
   }, {
     headers: {
       'Authorization': 'Bearer ' + apiKey,
@@ -56,7 +61,7 @@ async function callAgnes(prompt) {
   if (!content) {
     throw new Error('AI 未返回内容');
   }
-  return parseJson(content);
+  return plain ? String(content).trim() : parseJson(content);
 }
 
 /**
@@ -392,6 +397,30 @@ router.get('/limits', async (req, res) => {
   } catch (err) {
     console.error('[POSTER] limits error:', err.message);
     res.status(500).json({ ok: false, msg: '获取剩余次数失败' });
+  }
+});
+
+/**
+ * POST /api/poster/refine
+ * AI 补全自定义要求：用户粗略描述 → AI 扩写成详细的手抄报制作要求
+ * body: { accountId, theme, grade, rough }
+ */
+router.post('/refine', async (req, res) => {
+  const { accountId, theme = '', grade = '', rough = '' } = req.body || {};
+  if (!accountId) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
+  if (!rough || !String(rough).trim()) return res.status(400).json({ ok: false, msg: '请先输入你的想法' });
+
+  const prompt = `你是小学生手抄报指导老师。用户想制作一份主题为「${theme || '自定'}」(${grade || '小学'}) 的手抄报，用户的粗略想法是：
+「${String(rough).trim().slice(0, 200)}」
+
+请把这个想法扩写成 3~5 条具体、可执行的手抄报制作要求（每条一行、以数字开头），内容涵盖：板块内容安排、插图元素建议、配色与装饰、排版布局。语言简洁，每条不超过 25 字。只输出要求列表本身，不要任何开场白和解释。`;
+
+  try {
+    const refined = await callAgnes(prompt, { plain: true, maxTokens: 600 });
+    res.json({ ok: true, data: { refined } });
+  } catch (err) {
+    console.error('[POSTER] refine error:', err.message);
+    res.status(500).json({ ok: false, msg: 'AI 补全失败，请直接填写要求或稍后再试' });
   }
 });
 

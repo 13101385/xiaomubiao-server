@@ -14,7 +14,7 @@ const PDFDocument = require('pdfkit');
 
 const DAILY_LIMIT = 20; // 每账号每日 AI 生成上限（防 API 费用失控）
 const IMAGE_DAILY_LIMIT = 10; // 每账号每日 AI 生图上限（生图更贵，独立于文本生成）
-const MAX_CUSTOM_LEN = 500; // 自定义要求最大字数
+const MAX_CUSTOM_LEN = 1200; // 自定义要求最大字数（refine 产物约 400-700 字，放宽到 1200）
 const MAX_STYLE_LEN = 50; // 风格描述最大字数
 
 /* ==================== 参数定义 ==================== */
@@ -122,11 +122,19 @@ function parseJson(text) {
 function buildPrompt(params) {
   const { theme, grade, custom = '', style = '' } = params;
 
-  const customText = String(custom).trim() ? `\n【额外要求】${String(custom).trim().slice(0, 600)}` : '';
-  const styleText = String(style).trim() ? `\n【整体风格】${String(style).trim()}` : '';
+  const styleText = String(style).trim() ? String(style).trim() : '卡通可爱';
+  const customText = String(custom).trim()
+    ? `\n【用户的制作要求】（必须严格遵循，逐条落实到方案里）\n${String(custom).trim().slice(0, 1100)}`
+    : '';
 
-  return `请为「${grade}」设计一份主题为「${theme}」的手抄报方案。
-内容要适合小学生阅读，健康积极、通俗易懂、有趣有料。${customText}${styleText}
+  return `请为小学主题手抄报设计一份完整方案。
+
+【主题】${theme}
+【年级适配】${grade}（内容难度、用词、知识点必须符合该年级学生的认知水平）
+【画面风格】${styleText}
+${customText}
+
+内容要健康积极、通俗易懂、有趣有料。
 
 【JSON格式】只输出JSON，不要任何其他文字、markdown 或解释，字段名必须与下面完全一致：
 {
@@ -158,9 +166,16 @@ function buildImagePrompt(params) {
   const { theme, grade, custom = '', style = '' } = params;
 
   const styleText = String(style).trim() ? String(style).trim() : '卡通可爱';
-  const customText = String(custom).trim() ? `\n【额外要求】${String(custom).trim().slice(0, 600)}` : '';
+  const customText = String(custom).trim()
+    ? `\n【用户的制作要求】（必须严格遵循）\n${String(custom).trim().slice(0, 1000)}`
+    : '';
 
-  return `请绘制一张「${grade}」主题为「${theme}」的儿童手抄报插画底图，竖版 A4 比例约 3:4，风格：${styleText}，适合打印。
+  return `请绘制一张儿童手抄报插画底图，竖版 A4 比例约 3:4，适合打印。
+
+【主题】${theme}
+【年级适配】${grade}（画面元素和复杂度符合该年级学生喜好）
+【画面风格】${styleText}
+${customText}
 
 【画面要求】
 1. 四周环绕精美的主题装饰边框：紧扣「${theme}」主题，包含卡通小朋友、花朵、气球、太阳、云朵、星星、彩带等元素（如节日主题可加灯笼/国旗/烟花，季节主题可加对应植物动物）。

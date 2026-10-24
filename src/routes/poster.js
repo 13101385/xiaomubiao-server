@@ -122,7 +122,7 @@ function parseJson(text) {
 function buildPrompt(params) {
   const { theme, grade, custom = '', style = '' } = params;
 
-  const customText = String(custom).trim() ? `\n【额外要求】${String(custom).trim()}` : '';
+  const customText = String(custom).trim() ? `\n【额外要求】${String(custom).trim().slice(0, 600)}` : '';
   const styleText = String(style).trim() ? `\n【整体风格】${String(style).trim()}` : '';
 
   return `请为「${grade}」设计一份主题为「${theme}」的手抄报方案。
@@ -158,7 +158,7 @@ function buildImagePrompt(params) {
   const { theme, grade, custom = '', style = '' } = params;
 
   const styleText = String(style).trim() ? String(style).trim() : '卡通可爱';
-  const customText = String(custom).trim() ? `\n【额外要求】${String(custom).trim()}` : '';
+  const customText = String(custom).trim() ? `\n【额外要求】${String(custom).trim().slice(0, 600)}` : '';
 
   return `请绘制一张「${grade}」主题为「${theme}」的儿童手抄报插画底图，竖版 A4 比例约 3:4，风格：${styleText}，适合打印。
 
@@ -415,7 +415,7 @@ router.post('/refine', async (req, res) => {
 用户的需求描述：
 「${input}」
 
-请把它整理/扩写成一份详细的手抄报制作说明，总长度 400~500 字，用数字序号分条，必须覆盖以下 6 个方面：
+请把它整理/扩写成一份详细的手抄报制作说明，建议总长度 400~500 字左右（内容需要时可适当更多，不设硬性上限），用数字序号分条，必须覆盖以下 6 个方面：
 1. 版面布局：分几个板块、各板块的位置与大致比例（如顶部标题带、左/右/下板块分布）。
 2. 板块内容：每个板块的标题和 2~3 条具体内容要点（写什么文字，紧扣主题、适合${grade || '小学生'}）。
 3. 插图元素：具体画什么（人物、建筑、植物、吉祥物等），紧扣「${theme || '主题'}」，位置明确。

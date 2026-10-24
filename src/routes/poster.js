@@ -145,8 +145,9 @@ function buildPrompt(params) {
 }
 
 /**
- * 构造文生图提示词：儿童手抄报成品模板图片
- * 强调竖版 A4 构图、四周装饰边框、中央标题区与正文区大面积留白（供孩子手写）、适合打印后手写
+ * 构造文生图提示词：儿童手抄报插画底图
+ * 四周丰富装饰边框 + 中央大面积留白；禁止画面出现任何文字（乱码根源），
+ * 标题与正文文字由 PDF 排版系统精确填入
  */
 function buildImagePrompt(params) {
   const { theme, grade, custom = '', style = '' } = params;
@@ -154,16 +155,15 @@ function buildImagePrompt(params) {
   const styleText = String(style).trim() ? String(style).trim() : '卡通可爱';
   const customText = String(custom).trim() ? `\n【额外要求】${String(custom).trim()}` : '';
 
-  return `请绘制一张「${grade}」主题为「${theme}」的儿童手抄报成品模板图片，用于打印后由孩子手写填字。
+  return `请绘制一张「${grade}」主题为「${theme}」的儿童手抄报插画底图，竖版 A4 比例约 3:4，风格：${styleText}，适合打印。
 
 【画面要求】
-1. 竖版 A4 纸张构图，比例约 3:4，画面干净整洁，适合打印后手写。
-2. 整体风格：${styleText}，符合 ${grade} 小学生的审美。
-3. 四周设计精美的手抄报装饰边框，边框元素紧扣「${theme}」主题（如节日、季节、学习相关的小插图、花边、气球等）。
-4. 画面中上方预留醒目的标题区：可用装饰性大号美术字写出标题，或留出大块标题空白区域。
-5. 正文区域大面积留白：仅用淡色线条/花边框出 3~4 个板块轮廓，中间保持大块空白，方便孩子用笔手写文字。
-6. 色彩搭配鲜艳明快、和谐统一，主体颜色不超过 3~4 种。
-7. 不要写入大段正文文字、不要出现与主题无关的内容，保持整体留白充足。${customText}`;
+1. 四周环绕精美的主题装饰边框：紧扣「${theme}」主题，包含卡通小朋友、花朵、气球、太阳、云朵、星星、彩带等元素（如节日主题可加灯笼/国旗/烟花，季节主题可加对应植物动物）。
+2. 画面中央约 70% 区域为大面积纯色浅色留白（米白/浅黄/浅蓝），用于后续打印填充文字，不要在中央区域画任何东西。
+3. 【重要】画面中绝对不要出现任何文字、汉字、字母、数字、拼音——标题区和板块区保持纯空白，文字将由系统后期精确排版填入。
+4. 边框装饰要饱满丰富、色彩鲜艳明快（主体颜色 3~4 种），卡通造型圆润可爱，符合小学生审美。
+5. 顶部中央可画一个空白的装饰性标题牌匾轮廓（如丝带/云朵形状的空牌子），牌匾内保持空白无字。
+6. 保持整体干净整洁，适合 A4 打印。${customText}`;
 }
 
 /* ==================== 路由 ==================== */
@@ -255,7 +255,14 @@ router.post('/generate-image', async (req, res) => {
     }
 
     const prompt = buildImagePrompt(req.body);
-    const url = await callAgnesImage(prompt);
+    // 生图同时顺带生成文字方案（用于 PDF 排版填充真实文字）；文字失败不影响出图
+    const [url, plan] = await Promise.all([
+      callAgnesImage(prompt),
+      callAgnes(buildPrompt(req.body)).catch((e) => {
+        console.warn('[POSTER] 生图伴随文字方案生成失败(降级纯图):', e.message);
+        return null;
+      })
+    ]);
 
     const record = {
       id: 'poster_' + crypto.randomBytes(8).toString('hex'),
@@ -263,10 +270,13 @@ router.post('/generate-image', async (req, res) => {
       openId,
       theme: String(theme).trim(),
       grade,
-      title: String(theme).trim() + '手抄报图片',
+      title: (plan && plan.title) || (String(theme).trim() + '手抄报图片'),
       source: 'image',
       config: JSON.stringify({ theme, grade, style, custom }),
-      content: JSON.stringify({ theme, grade, style, custom, prompt }),
+      content: JSON.stringify(Object.assign({}, plan || {}, {
+        theme, grade, style, custom, prompt,
+        hasPlan: !!plan
+      })),
       imageUrl: url,
       createdAt: Date.now()
     };
@@ -480,6 +490,68 @@ function drawFlower(doc, cx, cy, r, petalColor, centerColor) {
   doc.fillColor(centerColor).circle(cx, cy, r * 0.38).fill();
 }
 
+/** 画太阳（圆 + 8 条射线） */
+function drawSun(doc, cx, cy, r, color) {
+  for (let i = 0; i < 8; i++) {
+    const ang = (i / 8) * Math.PI * 2;
+    const x1 = cx + Math.cos(ang) * r * 1.25;
+    const y1 = cy + Math.sin(ang) * r * 1.25;
+    const x2 = cx + Math.cos(ang) * r * 1.7;
+    const y2 = cy + Math.sin(ang) * r * 1.7;
+    doc.moveTo(x1, y1).lineTo(x2, y2).lineWidth(2).strokeColor(color).stroke();
+  }
+  doc.fillColor(color).circle(cx, cy, r).fill();
+}
+
+/** 画云朵（3 圆并排 + 底边） */
+function drawCloud(doc, cx, cy, r, color) {
+  doc.fillColor(color)
+    .circle(cx - r * 0.9, cy, r * 0.62).fill()
+    .circle(cx, cy - r * 0.35, r * 0.85).fill()
+    .circle(cx + r * 0.9, cy, r * 0.62).fill();
+  doc.roundedRect(cx - r * 1.5, cy - r * 0.1, r * 3, r * 0.7, r * 0.35).fill();
+}
+
+/** 画气球（椭圆 + 线 + 结） */
+function drawBalloon(doc, cx, cy, rx, ry, color) {
+  doc.fillColor(color).ellipse(cx, cy, rx, ry).fill();
+  doc.moveTo(cx, cy + ry).lineTo(cx - 3, cy + ry + 5).lineTo(cx + 3, cy + ry + 5).closePath().fill();
+  doc.moveTo(cx, cy + ry + 5)
+    .quadraticCurveTo(cx + 8, cy + ry + 18, cx - 2, cy + ry + 30)
+    .lineWidth(1).strokeColor('#999999').stroke();
+}
+
+/** 画卡通小朋友（圆头 + 表情 + 身体 + 张开手臂），手拉手效果 */
+function drawKid(doc, cx, cy, scale, shirtColor, skinColor) {
+  const s = scale;
+  // 手臂（先画，压在身体下）：从肩到外侧上扬
+  doc.lineWidth(2.5 * s).strokeColor(skinColor)
+    .moveTo(cx - 8 * s, cy + 4 * s).lineTo(cx - 15 * s, cy - 4 * s).stroke()
+    .moveTo(cx + 8 * s, cy + 4 * s).lineTo(cx + 15 * s, cy - 4 * s).stroke();
+  // 身体（衣服）
+  doc.fillColor(shirtColor)
+    .roundedRect(cx - 8 * s, cy, 16 * s, 14 * s, 4 * s).fill();
+  // 腿
+  doc.lineWidth(2 * s).strokeColor('#555555')
+    .moveTo(cx - 4 * s, cy + 14 * s).lineTo(cx - 5 * s, cy + 21 * s).stroke()
+    .moveTo(cx + 4 * s, cy + 14 * s).lineTo(cx + 5 * s, cy + 21 * s).stroke();
+  // 头
+  doc.fillColor(skinColor).circle(cx, cy - 8 * s, 8 * s).fill();
+  // 头发（头顶半圆）
+  doc.fillColor('#4A3728');
+  doc.moveTo(cx - 8 * s, cy - 9 * s);
+  doc.quadraticCurveTo(cx, cy - 20 * s, cx + 8 * s, cy - 9 * s);
+  doc.quadraticCurveTo(cx, cy - 14 * s, cx - 8 * s, cy - 9 * s);
+  doc.fill();
+  // 眼睛 + 微笑
+  doc.fillColor('#333333')
+    .circle(cx - 3 * s, cy - 7 * s, 1.1 * s).fill()
+    .circle(cx + 3 * s, cy - 7 * s, 1.1 * s).fill();
+  doc.lineWidth(1.2 * s).strokeColor('#333333')
+    .moveTo(cx - 2.5 * s, cy - 4.5 * s)
+    .quadraticCurveTo(cx, cy - 2.5 * s, cx + 2.5 * s, cy - 4.5 * s).stroke();
+}
+
 /**
  * 第 1 页「手抄报版式」：空白模板，供打印后手写
  * 背景铺色 + 双线装饰边框 + 四角圆点/方块 + 顶部标题横幅 + 中部板块框（大面积留白）+ 底部提示与装饰
@@ -545,7 +617,7 @@ function drawPosterTemplatePage(doc, ctx) {
   drawDot(doc, bannerX - 14, bannerCY + 30, 3, '#FFFFFF');
   drawDot(doc, bannerX + bannerW + 14, bannerCY + 30, 3, '#FFFFFF');
 
-  // 中部板块框：2 列网格（板块多则加行、少则单列），accent 描边、顶部 icon+标题、框内大面积留白
+  // 中部板块框：2 列网格（板块多则加行、少则单列），accent 描边、顶部 icon+标题、框内填入真实内容
   const sections = Array.isArray(ctx.content.sections) && ctx.content.sections.length > 0
     ? ctx.content.sections
     : [{ icon: '✏️', title: '内容区' }];
@@ -554,8 +626,28 @@ function drawPosterTemplatePage(doc, ctx) {
   const gap = 18;
   const cols = sections.length >= 3 ? 2 : 1;
   const rows = Math.max(1, Math.ceil(sections.length / cols));
+
+  // 卡通装饰带（板块少时才有空间）：太阳 + 手拉手小朋友 + 气球 + 云朵
+  let decoBandH = 0;
+  if (rows <= 2) {
+    decoBandH = 64;
+    const bandCY = bannerY + bannerH + 14 + 24;
+    const bandL = b + 70;
+    const bandR = pageW - b - 70;
+    drawSun(doc, bandL + 14, bandCY - 10, 11, '#F5B840');
+    drawCloud(doc, bandR - 20, bandCY - 12, 13, '#BFD9F2');
+    drawBalloon(doc, bandL + 66, bandCY - 14, 8, 10, accentColor);
+    const kidCY = bandCY + 6;
+    drawKid(doc, (bandL + bandR) / 2 - 22, kidCY, 1.1, mainColor, '#FFD9B3');
+    drawKid(doc, (bandL + bandR) / 2 + 22, kidCY, 1.1, accentColor, '#FFE3C2');
+    // 拉手
+    doc.lineWidth(2.5).strokeColor('#FFD9B3')
+      .moveTo((bandL + bandR) / 2 - 7, kidCY - 4.4)
+      .lineTo((bandL + bandR) / 2 + 7, kidCY - 4.4).stroke();
+  }
+
   const boxW = (boxRight - boxLeft - gap * (cols - 1)) / cols;
-  const boxTop = bannerY + bannerH + 24;
+  const boxTop = bannerY + bannerH + 24 + decoBandH;
   const boxBottom = pageH - b - 56; // 底部提示区上沿
   const boxH = Math.max(90, Math.min(320, (boxBottom - boxTop - gap * (rows - 1)) / rows));
   // 板块数量少时网格垂直居中
@@ -576,12 +668,31 @@ function drawPosterTemplatePage(doc, ctx) {
     // 标题下细分隔线（淡灰，标出书写区起点）
     const dividerY = by + Math.max(34, doc.y - by + 6);
     doc.lineWidth(1).strokeColor('#DCD4BE').moveTo(bx + 14, dividerY).lineTo(bx + boxW - 14, dividerY).stroke();
-    // 框内其余部分大面积留白（供孩子手写，不打印 content/bullets）
+    // 框内填入真实内容（正文自动换行 + 要点列表，直接打印可用）
+    const bodyTop = dividerY + 8;
+    const bodyLeft = bx + 14;
+    const bodyW = boxW - 28;
+    const bodyBottom = by + boxH - 10;
+    doc.fillColor('#333333').fontSize(10.5);
+    if (section.content) {
+      doc.text(String(section.content), bodyLeft, bodyTop, {
+        width: bodyW, height: bodyBottom - bodyTop, ellipsis: true, lineGap: 2.5
+      });
+    }
+    const bullets = Array.isArray(section.bullets) ? section.bullets : [];
+    let ly = Math.min(bodyBottom - 14, doc.y + 5);
+    bullets.forEach((bl, bi) => {
+      if (ly > bodyBottom - 13) return;
+      doc.fillColor('#555555').fontSize(9.5)
+        .text('• ' + String(bl), bodyLeft, ly, { width: bodyW, height: 14, ellipsis: true });
+      ly += 15;
+      if (bi === 0 && !section.content) doc.y = ly; // 无正文时为后续要点续行
+    });
   });
 
   // 底部小字提示
   doc.fillColor('#999999').fontSize(10)
-    .text('打印后，按板块标题手写内容、画插图', 0, pageH - 44, { width: pageW, align: 'center' });
+    .text('内容已为你填好，直接打印即可使用', 0, pageH - 44, { width: pageW, align: 'center' });
 
   // 页脚小装饰：星形 + 圆点 + 小方块
   const fy = pageH - b - 16;
@@ -745,11 +856,80 @@ router.get('/:id/pdf', async (req, res) => {
         console.error('[POSTER] pdf 图片解析失败:', err.message);
         return res.status(500).json({ ok: false, msg: '手抄报图片解析失败，请重新生成后再导出' });
       }
-      // 居中适配 A4 页面，保持宽高比
-      const scale = Math.min(pageW / img.width, pageH / img.height);
-      const w = img.width * scale;
-      const h = img.height * scale;
+      // cover 模式铺满 A4（保持比例、居中裁边），装饰边框完整、中央留白供叠字
+      const coverScale = Math.max(pageW / img.width, pageH / img.height);
+      const w = img.width * coverScale;
+      const h = img.height * coverScale;
       doc.image(img, (pageW - w) / 2, (pageH - h) / 2, { width: w, height: h });
+
+      // ===== 叠加真实中文文字（图片模型无法正确渲染汉字，由 PDF 排版精确填入）=====
+      let planContent = {};
+      try { planContent = JSON.parse(row.content) || {}; } catch (e) {}
+      const mainColor = pickColor(planContent.colorScheme && planContent.colorScheme.main, FALLBACK_COLORS.main);
+      const accentColor = pickColor(planContent.colorScheme && planContent.colorScheme.accent, FALLBACK_COLORS.accent);
+      doc.font(CHINESE_FONT);
+
+      // 顶部标题横幅（半透明白底，不遮挡插画风格）
+      const bnH = 92;
+      const bnY = 34;
+      const bnX = 40;
+      const bnW = pageW - bnX * 2;
+      doc.fillOpacity(0.88).fillColor('#FFFFFF');
+      doc.roundedRect(bnX, bnY, bnW, bnH, 16).fill();
+      doc.roundedRect(bnX, bnY, bnW, bnH, 16).lineWidth(2.5).strokeColor(mainColor).stroke();
+      doc.fillOpacity(1).fillColor(mainColor);
+      const posterTitle = planContent.title || title;
+      const posterSubtitle = planContent.subtitle || ((planContent.grade || '') + (planContent.theme ? ' · ' + planContent.theme : ''));
+      if (posterSubtitle) {
+        doc.fontSize(26).text(posterTitle, bnX, bnY + 12, { width: bnW, align: 'center' });
+        doc.fontSize(11).fillColor('#666666').text(posterSubtitle, bnX, bnY + bnH - 30, { width: bnW, align: 'center' });
+      } else {
+        doc.fontSize(30).text(posterTitle, bnX, bnY + (bnH - 40) / 2, { width: bnW, align: 'center' });
+      }
+
+      // 板块文字框（有文字方案时）：半透明白底圆角框 + 板块标题/正文/要点
+      const sections = Array.isArray(planContent.sections) ? planContent.sections.filter(s => s && (s.title || s.content)) : [];
+      if (sections.length > 0) {
+        const sTop = bnY + bnH + 18;
+        const sBottom = pageH - 42;
+        const sGap = 14;
+        const cols = sections.length >= 3 ? 2 : 1;
+        const rows = Math.ceil(sections.length / cols);
+        const sLeft = 40;
+        const sW = (pageW - sLeft * 2 - sGap * (cols - 1)) / cols;
+        const sH = Math.min(240, Math.max(110, (sBottom - sTop - sGap * (rows - 1)) / rows));
+        sections.slice(0, rows * cols).forEach((section, i) => {
+          const col = i % cols;
+          const row = Math.floor(i / cols);
+          const sx = sLeft + col * (sW + sGap);
+          const sy = sTop + row * (sH + sGap);
+          doc.fillOpacity(0.9).fillColor('#FFFFFF');
+          doc.roundedRect(sx, sy, sW, sH, 12).fill();
+          doc.roundedRect(sx, sy, sW, sH, 12).lineWidth(2).strokeColor(accentColor).stroke();
+          doc.fillOpacity(1);
+          // 板块标题
+          doc.fillColor(i % 2 === 0 ? mainColor : accentColor).fontSize(14)
+            .text((section.icon ? section.icon + ' ' : '') + (section.title || ''), sx + 12, sy + 10, { width: sW - 24 });
+          // 正文（自动换行，超出截断）
+          doc.fillColor('#333333').fontSize(10);
+          const bodyY = doc.y + 4;
+          const bodyH = sH - (bodyY - sy) - 12;
+          doc.text(section.content || '', sx + 12, bodyY, { width: sW - 24, height: bodyH, ellipsis: true, lineGap: 2 });
+          // 要点（放得下就画）
+          const bullets = Array.isArray(section.bullets) ? section.bullets.slice(0, 3) : [];
+          let by = Math.min(sy + sH - 12, doc.y + 6);
+          bullets.forEach((b) => {
+            if (by > sy + sH - 14) return;
+            doc.fillColor('#555555').fontSize(9).text('• ' + b, sx + 12, by, { width: sW - 24, height: 14, ellipsis: true });
+            by += 15;
+          });
+        });
+      }
+
+      // 底部落款
+      doc.fillOpacity(0.75).fillColor('#888888').fontSize(9)
+        .text('「成长趣味」· AI 生成手抄报', 0, pageH - 26, { width: pageW, align: 'center' });
+      doc.fillOpacity(1);
       doc.end();
       return;
     }

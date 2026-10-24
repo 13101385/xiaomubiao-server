@@ -402,7 +402,7 @@ router.get('/limits', async (req, res) => {
 
 /**
  * POST /api/poster/refine
- * AI 补全自定义要求：用户粗略描述 → AI 扩写成详细的手抄报制作要求
+ * AI 补全/优化自定义要求：粗略想法 → 400~500 字详细制作说明，可多轮迭代
  * body: { accountId, theme, grade, rough }
  */
 router.post('/refine', async (req, res) => {
@@ -410,13 +410,23 @@ router.post('/refine', async (req, res) => {
   if (!accountId) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
   if (!rough || !String(rough).trim()) return res.status(400).json({ ok: false, msg: '请先输入你的想法' });
 
-  const prompt = `你是小学生手抄报指导老师。用户想制作一份主题为「${theme || '自定'}」(${grade || '小学'}) 的手抄报，用户的粗略想法是：
-「${String(rough).trim().slice(0, 200)}」
+  const input = String(rough).trim().slice(0, 600);
+  const prompt = `你是小学生手抄报指导老师。手抄报主题「${theme || '自定'}」（${grade || '小学'}）。
+用户的需求描述：
+「${input}」
 
-请把这个想法扩写成 3~5 条具体、可执行的手抄报制作要求（每条一行、以数字开头），内容涵盖：板块内容安排、插图元素建议、配色与装饰、排版布局。语言简洁，每条不超过 25 字。只输出要求列表本身，不要任何开场白和解释。`;
+请把它整理/扩写成一份详细的手抄报制作说明，总长度 400~500 字，用数字序号分条，必须覆盖以下 6 个方面：
+1. 版面布局：分几个板块、各板块的位置与大致比例（如顶部标题带、左/右/下板块分布）。
+2. 板块内容：每个板块的标题和 2~3 条具体内容要点（写什么文字，紧扣主题、适合${grade || '小学生'}）。
+3. 插图元素：具体画什么（人物、建筑、植物、吉祥物等），紧扣「${theme || '主题'}」，位置明确。
+4. 配色方案：主色、辅色、背景色，给出具体颜色（如"中国红 #E63946 + 金黄"）。
+5. 标题设计：标题文字建议 + 美术字样式（如空心字、彩色描边）。
+6. 装饰细节：花边样式、四角装饰、点缀元素。
+
+要求：内容具体可执行、健康积极、适合直接照着制作。只输出说明文本本身，不要开场白、不要解释、不要 markdown 标记。`;
 
   try {
-    const refined = await callAgnes(prompt, { plain: true, maxTokens: 600 });
+    const refined = await callAgnes(prompt, { plain: true, maxTokens: 1200 });
     res.json({ ok: true, data: { refined } });
   } catch (err) {
     console.error('[POSTER] refine error:', err.message);

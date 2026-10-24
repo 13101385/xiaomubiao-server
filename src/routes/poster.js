@@ -500,6 +500,33 @@ router.delete('/:id', async (req, res) => {
 });
 
 /**
+ * GET /api/poster/:id/cover?accountId=xxx
+ * 图片代理：服务端拉取 AI 图床图片后以图片流返回。
+ * 解决真机 downloadFile 域名白名单限制（AI 图床域名不可配）。
+ */
+router.get('/:id/cover', async (req, res) => {
+  const { accountId } = req.query;
+  if (!accountId) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
+  try {
+    const row = await db.getPoster(req.params.id, accountId);
+    if (!row || !row.imageUrl) return res.status(404).json({ ok: false, msg: '图片不存在' });
+    const resp = await axios.get(row.imageUrl, { responseType: 'arraybuffer', timeout: 20000 });
+    const buf = Buffer.from(resp.data || []);
+    if (buf.length < 100) return res.status(500).json({ ok: false, msg: '图片数据无效' });
+    // 依据签名给 MIME
+    let mime = 'image/png';
+    if (buf[0] === 0xFF && buf[1] === 0xD8) mime = 'image/jpeg';
+    else if (buf.toString('ascii', 0, 4) === 'RIFF') mime = 'image/webp';
+    res.setHeader('Content-Type', mime);
+    res.setHeader('Content-Length', buf.length);
+    res.send(buf);
+  } catch (err) {
+    console.error('[POSTER] cover 代理失败:', err.message);
+    res.status(500).json({ ok: false, msg: '图片拉取失败，请稍后重试' });
+  }
+});
+
+/**
  * POST /api/poster/batch-delete
  * 批量删除手抄报
  * body: { accountId, ids: [id1, id2, ...] }
@@ -936,80 +963,93 @@ router.get('/:id/pdf', async (req, res) => {
         console.error('[POSTER] pdf 图片解析失败:', err.message);
         return res.status(500).json({ ok: false, msg: '手抄报图片解析失败，请重新生成后再导出' });
       }
-      // cover 模式铺满 A4（保持比例、居中裁边），装饰边框完整、中央留白供叠字
+      // 第 1 页：纯插画 cover 铺满 A4（无任何叠框，完整保留 AI 画面）
       const coverScale = Math.max(pageW / img.width, pageH / img.height);
       const w = img.width * coverScale;
       const h = img.height * coverScale;
       doc.image(img, (pageW - w) / 2, (pageH - h) / 2, { width: w, height: h });
 
-      // ===== 叠加真实中文文字（图片模型无法正确渲染汉字，由 PDF 排版精确填入）=====
+      // 第 2 页：配套文字排版页（图片模型写不了汉字，文字单独成页，干净可打印）
       let planContent = {};
       try { planContent = JSON.parse(row.content) || {}; } catch (e) {}
-      const mainColor = pickColor(planContent.colorScheme && planContent.colorScheme.main, FALLBACK_COLORS.main);
-      const accentColor = pickColor(planContent.colorScheme && planContent.colorScheme.accent, FALLBACK_COLORS.accent);
-      doc.font(CHINESE_FONT);
-
-      // 顶部标题横幅（半透明白底，不遮挡插画风格）
-      const bnH = 92;
-      const bnY = 34;
-      const bnX = 40;
-      const bnW = pageW - bnX * 2;
-      doc.fillOpacity(0.88).fillColor('#FFFFFF');
-      doc.roundedRect(bnX, bnY, bnW, bnH, 16).fill();
-      doc.roundedRect(bnX, bnY, bnW, bnH, 16).lineWidth(2.5).strokeColor(mainColor).stroke();
-      doc.fillOpacity(1).fillColor(mainColor);
-      const posterTitle = planContent.title || title;
-      const posterSubtitle = planContent.subtitle || ((planContent.grade || '') + (planContent.theme ? ' · ' + planContent.theme : ''));
-      if (posterSubtitle) {
-        doc.fontSize(26).text(posterTitle, bnX, bnY + 12, { width: bnW, align: 'center' });
-        doc.fontSize(11).fillColor('#666666').text(posterSubtitle, bnX, bnY + bnH - 30, { width: bnW, align: 'center' });
-      } else {
-        doc.fontSize(30).text(posterTitle, bnX, bnY + (bnH - 40) / 2, { width: bnW, align: 'center' });
-      }
-
-      // 板块文字框（有文字方案时）：半透明白底圆角框 + 板块标题/正文/要点
       const sections = Array.isArray(planContent.sections) ? planContent.sections.filter(s => s && (s.title || s.content)) : [];
-      if (sections.length > 0) {
-        const sTop = bnY + bnH + 18;
-        const sBottom = pageH - 42;
-        const sGap = 14;
-        const cols = sections.length >= 3 ? 2 : 1;
-        const rows = Math.ceil(sections.length / cols);
-        const sLeft = 40;
-        const sW = (pageW - sLeft * 2 - sGap * (cols - 1)) / cols;
-        const sH = Math.min(240, Math.max(110, (sBottom - sTop - sGap * (rows - 1)) / rows));
-        sections.slice(0, rows * cols).forEach((section, i) => {
-          const col = i % cols;
-          const row = Math.floor(i / cols);
-          const sx = sLeft + col * (sW + sGap);
-          const sy = sTop + row * (sH + sGap);
-          doc.fillOpacity(0.9).fillColor('#FFFFFF');
-          doc.roundedRect(sx, sy, sW, sH, 12).fill();
-          doc.roundedRect(sx, sy, sW, sH, 12).lineWidth(2).strokeColor(accentColor).stroke();
-          doc.fillOpacity(1);
-          // 板块标题
-          doc.fillColor(i % 2 === 0 ? mainColor : accentColor).fontSize(14)
-            .text((section.icon ? section.icon + ' ' : '') + (section.title || ''), sx + 12, sy + 10, { width: sW - 24 });
-          // 正文（自动换行，超出截断）
-          doc.fillColor('#333333').fontSize(10);
-          const bodyY = doc.y + 4;
-          const bodyH = sH - (bodyY - sy) - 12;
-          doc.text(section.content || '', sx + 12, bodyY, { width: sW - 24, height: bodyH, ellipsis: true, lineGap: 2 });
-          // 要点（放得下就画）
-          const bullets = Array.isArray(section.bullets) ? section.bullets.slice(0, 3) : [];
-          let by = Math.min(sy + sH - 12, doc.y + 6);
-          bullets.forEach((b) => {
-            if (by > sy + sH - 14) return;
-            doc.fillColor('#555555').fontSize(9).text('• ' + b, sx + 12, by, { width: sW - 24, height: 14, ellipsis: true });
-            by += 15;
-          });
-        });
-      }
+      const hasPlan = sections.length > 0 || planContent.title || planContent.writeTips;
+      if (hasPlan) {
+        doc.addPage({ margin: 0, size: 'A4' });
+        const mainColor = pickColor(planContent.colorScheme && planContent.colorScheme.main, FALLBACK_COLORS.main);
+        const accentColor = pickColor(planContent.colorScheme && planContent.colorScheme.accent, FALLBACK_COLORS.accent);
+        const bgColor = pickColor(planContent.colorScheme && planContent.colorScheme.bg, '#FFFFFF');
+        doc.font(CHINESE_FONT);
+        // 页面底色（配色方案的 bg，柔和纸感）
+        doc.fillOpacity(1).fillColor(bgColor);
+        doc.rect(0, 0, pageW, pageH).fill();
 
-      // 底部落款
-      doc.fillOpacity(0.75).fillColor('#888888').fontSize(9)
-        .text('「成长趣味」· AI 生成手抄报', 0, pageH - 26, { width: pageW, align: 'center' });
-      doc.fillOpacity(1);
+        // 顶部标题横幅：实底色块 + 白字（可打印、醒目）
+        const bnH = 96;
+        const bnY = 40;
+        const bnX = 40;
+        const bnW = pageW - bnX * 2;
+        doc.fillColor(mainColor);
+        doc.roundedRect(bnX, bnY, bnW, bnH, 16).fill();
+        doc.fillColor('#FFFFFF');
+        const posterTitle = planContent.title || title;
+        const posterSubtitle = planContent.subtitle || ((planContent.grade || '') + (planContent.theme ? ' · ' + planContent.theme : ''));
+        if (posterSubtitle) {
+          doc.fontSize(27).text(posterTitle, bnX, bnY + 14, { width: bnW, align: 'center' });
+          doc.fontSize(12).fillOpacity(0.92).text(posterSubtitle, bnX, bnY + bnH - 30, { width: bnW, align: 'center' });
+          doc.fillOpacity(1);
+        } else {
+          doc.fontSize(30).text(posterTitle, bnX, bnY + (bnH - 40) / 2, { width: bnW, align: 'center' });
+        }
+
+        // 板块卡：两列/单列自适应，标题条 + 正文 + 要点（留白供手写补充）
+        if (sections.length > 0) {
+          const sTop = bnY + bnH + 20;
+          const sBottom = pageH - 60;
+          const sGap = 14;
+          const cols = sections.length >= 3 ? 2 : 1;
+          const rows = Math.ceil(Math.min(sections.length, 6) / cols);
+          const sLeft = 40;
+          const sW = (pageW - sLeft * 2 - sGap * (cols - 1)) / cols;
+          const sH = Math.min(260, Math.max(120, (sBottom - sTop - sGap * (rows - 1)) / rows));
+          sections.slice(0, rows * cols).forEach((section, i) => {
+            const col = i % cols;
+            const row = Math.floor(i / cols);
+            const sx = sLeft + col * (sW + sGap);
+            const sy = sTop + row * (sH + sGap);
+            // 卡片底（白）+ 描边（accent）
+            doc.fillColor('#FFFFFF');
+            doc.roundedRect(sx, sy, sW, sH, 12).fill();
+            doc.roundedRect(sx, sy, sW, sH, 12).lineWidth(2).strokeColor(accentColor).stroke();
+            // 标题条（accent 浅底）
+            const headH = 26;
+            doc.fillOpacity(0.14).fillColor(accentColor);
+            doc.roundedRect(sx, sy, sW, headH, 12).fill();
+            doc.roundedRect(sx, sy + headH - 12, sW, 12, 0).fill();
+            doc.fillOpacity(1);
+            doc.fillColor(mainColor).fontSize(13)
+              .text((section.icon ? section.icon + ' ' : '') + (section.title || ''), sx + 12, sy + 6, { width: sW - 24, lineBreak: false });
+            // 正文
+            doc.fillColor('#333333').fontSize(10);
+            const bodyY = sy + headH + 8;
+            const bodyH = sH - headH - 18;
+            doc.text(section.content || '', sx + 12, bodyY, { width: sW - 24, height: bodyH, ellipsis: true, lineGap: 2 });
+            // 要点
+            const bullets = Array.isArray(section.bullets) ? section.bullets.slice(0, 3) : [];
+            let by = Math.min(sy + sH - 14, doc.y + 6);
+            bullets.forEach((b, bi) => {
+              if (by > sy + sH - 14) return;
+              doc.fillColor(accentColor).fontSize(9).text('•', sx + 12, by, { lineBreak: false });
+              doc.fillColor('#555555').fontSize(9).text(String(b), sx + 22, by, { width: sW - 34, ellipsis: true, lineBreak: false });
+              by += 13;
+            });
+          });
+        }
+
+        // 底部落款
+        doc.fillColor('#A6B2C2').fontSize(9)
+          .text('「成长趣味」手抄报 · 第 1 页插画 / 第 2 页文字排版', 0, pageH - 36, { width: pageW, align: 'center' });
+      }
       doc.end();
       return;
     }

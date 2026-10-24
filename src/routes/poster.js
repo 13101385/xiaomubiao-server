@@ -202,6 +202,7 @@ router.post('/generate', async (req, res) => {
   // 参数校验
   if (!accountId) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
   if (!theme || !String(theme).trim()) return res.status(400).json({ ok: false, msg: '缺少 theme' });
+  if (String(theme).length > 50) return res.status(400).json({ ok: false, msg: '主题过长（最多50字）' });
   if (!GRADES.includes(grade)) return res.status(400).json({ ok: false, msg: '不支持的年级' });
   if (String(custom).length > MAX_CUSTOM_LEN) return res.status(400).json({ ok: false, msg: '自定义要求过长（最多' + MAX_CUSTOM_LEN + '字）' });
   if (String(style).length > MAX_STYLE_LEN) return res.status(400).json({ ok: false, msg: '风格描述过长' });
@@ -261,6 +262,7 @@ router.post('/generate-image', async (req, res) => {
   // 参数校验
   if (!accountId) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
   if (!theme || !String(theme).trim()) return res.status(400).json({ ok: false, msg: '缺少 theme' });
+  if (String(theme).length > 50) return res.status(400).json({ ok: false, msg: '主题过长（最多50字）' });
   if (!GRADES.includes(grade)) return res.status(400).json({ ok: false, msg: '不支持的年级' });
   if (String(custom).length > MAX_CUSTOM_LEN) return res.status(400).json({ ok: false, msg: '自定义要求过长（最多' + MAX_CUSTOM_LEN + '字）' });
   if (String(style).length > MAX_STYLE_LEN) return res.status(400).json({ ok: false, msg: '风格描述过长' });
@@ -323,6 +325,7 @@ router.post('/save', async (req, res) => {
   // 参数校验
   if (!accountId) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
   if (!theme || !String(theme).trim()) return res.status(400).json({ ok: false, msg: '缺少 theme' });
+  if (String(theme).length > 50) return res.status(400).json({ ok: false, msg: '主题过长（最多50字）' });
   if (!GRADES.includes(grade)) return res.status(400).json({ ok: false, msg: '不支持的年级' });
   if (!content) return res.status(400).json({ ok: false, msg: '缺少 content' });
 

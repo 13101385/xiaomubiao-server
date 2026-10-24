@@ -47,6 +47,10 @@ app.use('/api/poster', posterRoutes);
 
 // 错误处理
 app.use((err, req, res, next) => {
+  // body 解析失败（非法/截断 JSON）返回 400 而非 500
+  if (err.type === 'entity.parse.failed' || err.status === 400) {
+    return res.status(400).json({ ok: false, msg: '请求体格式错误（非法 JSON）' });
+  }
   console.error('[ERROR]', err.stack);
   res.status(500).json({ ok: false, msg: '服务器内部错误' });
 });

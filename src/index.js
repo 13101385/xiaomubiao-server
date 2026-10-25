@@ -35,58 +35,29 @@ app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
-// 静态文件服务：预合成海报
-const staticPath = path.join(__dirname, '..', 'public', 'composed');
-if (!fs.existsSync(staticPath)) {
-  fs.mkdirSync(staticPath, { recursive: true });
-}
-app.use('/composed', express.static(staticPath));
-
 /**
  * POST /api/poster/upload-composed
- * 上传合成海报，保存到 public/composed/ 并更新数据库
+ * 上传合成海报：base64 存入数据库（持久卷），重启不丢
  */
-app.post('/api/poster/upload-composed', express.json({ limit: '20mb' }), (req, res) => {
+app.post('/api/poster/upload-composed', (req, res) => {
   const { posterId, accountId, imageBase64 } = req.body;
   if (!posterId || !accountId || !imageBase64) {
     return res.status(400).json({ ok: false, msg: '缺少参数' });
   }
-  try {
-    // 解析 base64
-    const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-    const buffer = Buffer.from(base64Data, 'base64');
+  const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+  const key = 'composed/' + posterId + '.png';
+  const url = '/api/poster/composed/' + posterId + '.png';
 
-    // 异步保存到本地（避免阻塞事件循环）
-    const filename = posterId + '.png';
-    const filepath = path.join(staticPath, filename);
-
-    fs.writeFile(filepath, buffer, (writeErr) => {
-      if (writeErr) {
-        console.error('[UPLOAD] 文件写入失败:', writeErr.message);
-        return res.status(500).json({ ok: false, msg: '文件保存失败' });
-      }
-
-      // 异步更新数据库
-      db.updatePoster(posterId, accountId, { composedUrl: '/composed/' + filename })
-        .then(success => {
-          if (success) {
-            res.json({ ok: true, composedUrl: '/composed/' + filename });
-          } else {
-            // 数据库更新失败，删除已保存的文件
-            fs.unlink(filepath, () => {});
-            res.status(500).json({ ok: false, msg: '数据库更新失败' });
-          }
-        })
-        .catch(err => {
-          console.error('[UPLOAD] 数据库错误:', err.message);
-          fs.unlink(filepath, () => {});
-          res.status(500).json({ ok: false, msg: err.message });
-        });
+  db.putBlob(key, base64Data)
+    .then(() => db.updatePoster(posterId, accountId, { composedUrl: url }))
+    .then(success => {
+      if (success) res.json({ ok: true, composedUrl: url });
+      else res.status(500).json({ ok: false, msg: '数据库更新失败（海报不存在?）' });
+    })
+    .catch(err => {
+      console.error('[UPLOAD] 存储失败:', err.message);
+      res.status(500).json({ ok: false, msg: err.message });
     });
-  } catch (err) {
-    console.error('[UPLOAD] 解析错误:', err.message);
-    res.status(500).json({ ok: false, msg: err.message });
-  }
 });
 
 

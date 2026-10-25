@@ -30,7 +30,8 @@ function createTables() {
     'CREATE TABLE IF NOT EXISTS parent_records (account_id TEXT PRIMARY KEY, parent_name TEXT NOT NULL, pin_hash TEXT NOT NULL, has_registered INTEGER DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS sms_codes (phone TEXT NOT NULL, code TEXT NOT NULL, expires_at INTEGER NOT NULL, used INTEGER DEFAULT 0, created_at INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS exams (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, open_id TEXT DEFAULT \'\', subject TEXT NOT NULL, grade TEXT NOT NULL, title TEXT NOT NULL, config TEXT NOT NULL, content TEXT NOT NULL, created_at INTEGER NOT NULL)',
-    'CREATE TABLE IF NOT EXISTS posters (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, open_id TEXT DEFAULT \'\', theme TEXT NOT NULL, grade TEXT NOT NULL, title TEXT NOT NULL, source TEXT NOT NULL, config TEXT NOT NULL, content TEXT NOT NULL, image_url TEXT DEFAULT \'\', composed_url TEXT DEFAULT \'\', created_at INTEGER NOT NULL)'
+    'CREATE TABLE IF NOT EXISTS posters (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, open_id TEXT DEFAULT \'\', theme TEXT NOT NULL, grade TEXT NOT NULL, title TEXT NOT NULL, source TEXT NOT NULL, config TEXT NOT NULL, content TEXT NOT NULL, image_url TEXT DEFAULT \'\', composed_url TEXT DEFAULT \'\', created_at INTEGER NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS poster_blobs (key TEXT PRIMARY KEY, data TEXT NOT NULL, created_at INTEGER NOT NULL)'
   ];
   
   const indexes = [
@@ -45,8 +46,8 @@ function createTables() {
   return new Promise((resolve, reject) => {
     db.serialize(() => {
       let count = 0;
-      // +1：幂等加列 ALTER TABLE
-      const total = tables.length + indexes.length + 1;
+      // +2：两条幂等加列 ALTER TABLE
+      const total = tables.length + indexes.length + 2;
       const done = () => {
         count++;
         if (count === total) {
@@ -70,6 +71,12 @@ function createTables() {
           console.warn('[DB] posters 加 composed_url 列失败（列可能已存在，忽略）:', err.message);
         }
         done();
+      });
+      // 一次性迁移：旧的 /composed/ 静态路径存放在容器临时层，重启即丢。
+      // 成品图已改存数据库（poster_blobs），清空死指针以便重新生成。
+      db.run("UPDATE posters SET composed_url = '' WHERE composed_url LIKE '/composed/%'", (err) => {
+        if (err) console.warn('[DB] 清理失效 composed_url 失败:', err.message);
+        else console.log('[DB] 已清理指向临时层的失效 composed_url');
       });
     });
   });
@@ -363,6 +370,29 @@ function countPostersToday(accountId, startOfDay) {
 }
 
 /**
+ * 成品图二进制存储（base64），存放在持久卷上的 SQLite 中，
+ * 不依赖容器临时文件系统（重启不丢）
+ */
+function putBlob(key, data) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'INSERT INTO poster_blobs (key, data, created_at) VALUES (?, ?, ?) ON CONFLICT(key) DO UPDATE SET data = excluded.data, created_at = excluded.created_at',
+      [key, data, Date.now()],
+      (err) => (err ? reject(err) : resolve(true))
+    );
+  });
+}
+
+function getBlob(key) {
+  return new Promise((resolve, reject) => {
+    db.get('SELECT data FROM poster_blobs WHERE key = ?', [key], (err, row) => {
+      if (err) reject(err);
+      else resolve(row ? row.data : null);
+    });
+  });
+}
+
+/**
  * 更新海报的 composed_url（文字合成后的成品图）
  */
 function updatePoster(posterId, accountId, data) {
@@ -416,5 +446,6 @@ module.exports = {
   getParentRecord, saveParentRecord, isParentRegistered,
   createExam, listExams, getExam, deleteExam, countExamsToday,
   createPoster, listPosters, getPoster, deletePoster, updatePoster,
+  putBlob, getBlob,
   countPostersToday, countImagesToday
 };

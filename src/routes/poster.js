@@ -381,6 +381,30 @@ router.get('/list', async (req, res) => {
 });
 
 /**
+ * GET /api/poster/composed/:name
+ * 返回数据库中存储的成品图（持久卷，重启不丢）
+ */
+router.get('/composed/:name', async (req, res) => {
+  const name = String(req.params.name || '');
+  // 只允许 poster_xxx.png 形式，防目录穿越
+  if (!/^poster_[a-z0-9]+\.png$/i.test(name)) {
+    return res.status(400).json({ ok: false, msg: '非法文件名' });
+  }
+  try {
+    const data = await db.getBlob('composed/' + name);
+    if (!data) return res.status(404).json({ ok: false, msg: '成品图不存在' });
+    const buf = Buffer.from(data, 'base64');
+    res.set('Content-Type', 'image/png');
+    res.set('Content-Length', buf.length);
+    res.set('Cache-Control', 'public, max-age=604800');
+    res.send(buf);
+  } catch (err) {
+    console.error('[POSTER] composed 读取失败:', err.message);
+    res.status(500).json({ ok: false, msg: '读取成品图失败' });
+  }
+});
+
+/**
  * GET /api/poster/limits?accountId=xxx
  * 今日剩余生成次数（AI 文字 / AI 生图），供前端展示
  */

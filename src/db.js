@@ -375,7 +375,7 @@ function updatePoster(posterId, accountId, data) {
     db.run(
       'UPDATE posters SET ' + fields.join(', ') + ' WHERE id = ? AND account_id = ?',
       values,
-      (err) => {
+      function(err) {
         if (err) reject(err);
         else resolve(this.changes > 0);
       }

@@ -46,7 +46,7 @@ app.use('/composed', express.static(staticPath));
  * POST /api/poster/upload-composed
  * 上传合成海报，保存到 public/composed/ 并更新数据库
  */
-app.post('/api/poster/upload-composed', express.json({ limit: '50mb' }), (req, res) => {
+app.post('/api/poster/upload-composed', express.json({ limit: '20mb' }), (req, res) => {
   const { posterId, accountId, imageBase64 } = req.body;
   if (!posterId || !accountId || !imageBase64) {
     return res.status(400).json({ ok: false, msg: '缺少参数' });
@@ -56,16 +56,35 @@ app.post('/api/poster/upload-composed', express.json({ limit: '50mb' }), (req, r
     const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
     const buffer = Buffer.from(base64Data, 'base64');
 
-    // 保存到本地
+    // 异步保存到本地（避免阻塞事件循环）
     const filename = posterId + '.png';
     const filepath = path.join(staticPath, filename);
-    fs.writeFileSync(filepath, buffer);
 
-    // 更新数据库
-    db.updatePoster(posterId, accountId, { composedUrl: '/composed/' + filename })
-      .then(() => res.json({ ok: true, composedUrl: '/composed/' + filename }))
-      .catch(err => res.status(500).json({ ok: false, msg: err.message }));
+    fs.writeFile(filepath, buffer, (writeErr) => {
+      if (writeErr) {
+        console.error('[UPLOAD] 文件写入失败:', writeErr.message);
+        return res.status(500).json({ ok: false, msg: '文件保存失败' });
+      }
+
+      // 异步更新数据库
+      db.updatePoster(posterId, accountId, { composedUrl: '/composed/' + filename })
+        .then(success => {
+          if (success) {
+            res.json({ ok: true, composedUrl: '/composed/' + filename });
+          } else {
+            // 数据库更新失败，删除已保存的文件
+            fs.unlink(filepath, () => {});
+            res.status(500).json({ ok: false, msg: '数据库更新失败' });
+          }
+        })
+        .catch(err => {
+          console.error('[UPLOAD] 数据库错误:', err.message);
+          fs.unlink(filepath, () => {});
+          res.status(500).json({ ok: false, msg: err.message });
+        });
+    });
   } catch (err) {
+    console.error('[UPLOAD] 解析错误:', err.message);
     res.status(500).json({ ok: false, msg: err.message });
   }
 });

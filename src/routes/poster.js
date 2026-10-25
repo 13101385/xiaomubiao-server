@@ -12,8 +12,7 @@ const db = require('../db');
 const path = require('path');
 const PDFDocument = require('pdfkit');
 
-const DAILY_LIMIT = 200; // 每账号每日 AI 生成上限（防 API 费用失控）
-const IMAGE_DAILY_LIMIT = 200; // 每账号每日 AI 生图上限（临时调大，开发测试用）
+const DAILY_LIMIT = 200; // 每账号每日 AI 文字生成上限（防 API 费用失控）
 const MAX_CUSTOM_LEN = 1200; // 自定义要求最大字数（refine 产物约 400-700 字，放宽到 1200）
 const MAX_STYLE_LEN = 50; // 风格描述最大字数
 
@@ -268,14 +267,6 @@ router.post('/generate-image', async (req, res) => {
   if (String(style).length > MAX_STYLE_LEN) return res.status(400).json({ ok: false, msg: '风格描述过长' });
 
   try {
-    // 每日生图限额（独立于文本生成限额）
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    const todayCount = await db.countImagesToday(accountId, startOfDay.getTime());
-    if (todayCount >= IMAGE_DAILY_LIMIT) {
-      return res.status(429).json({ ok: false, msg: '今日AI生图已达上限（' + IMAGE_DAILY_LIMIT + ' 张），明天再来吧' });
-    }
-
     const prompt = buildImagePrompt(req.body);
     // 生图同时顺带生成文字方案（用于 PDF 排版填充真实文字）；文字失败不影响出图
     const [url, plan] = await Promise.all([
@@ -399,17 +390,14 @@ router.get('/limits', async (req, res) => {
   try {
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
-    const [aiUsed, imgUsed] = await Promise.all([
-      db.countPostersToday(accountId, startOfDay.getTime()),
-      db.countImagesToday(accountId, startOfDay.getTime())
-    ]);
+    const aiUsed = await db.countPostersToday(accountId, startOfDay.getTime());
     res.json({
       ok: true,
       data: {
         aiRemain: Math.max(0, DAILY_LIMIT - aiUsed),
-        imageRemain: Math.max(0, IMAGE_DAILY_LIMIT - imgUsed),
+        imageRemain: null,  // 生图不限制
         aiLimit: DAILY_LIMIT,
-        imageLimit: IMAGE_DAILY_LIMIT
+        imageLimit: null    // 生图不限制
       }
     });
   } catch (err) {

@@ -310,7 +310,7 @@ function createPoster(poster) {
 function listPosters(accountId) {
   return new Promise((resolve, reject) => {
     db.all(
-      'SELECT id, account_id, theme, grade, title, source, image_url, composed_url, created_at FROM posters WHERE account_id = ? ORDER BY created_at DESC LIMIT 100',
+      'SELECT id, account_id, theme, grade, title, source, image_url, composed_url, created_at FROM posters WHERE account_id = ? ORDER BY created_at DESC LIMIT 300',
       [accountId],
       (err, rows) => {
         if (err) reject(err);

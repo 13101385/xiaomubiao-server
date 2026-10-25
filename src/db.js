@@ -30,7 +30,7 @@ function createTables() {
     'CREATE TABLE IF NOT EXISTS parent_records (account_id TEXT PRIMARY KEY, parent_name TEXT NOT NULL, pin_hash TEXT NOT NULL, has_registered INTEGER DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS sms_codes (phone TEXT NOT NULL, code TEXT NOT NULL, expires_at INTEGER NOT NULL, used INTEGER DEFAULT 0, created_at INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS exams (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, open_id TEXT DEFAULT \'\', subject TEXT NOT NULL, grade TEXT NOT NULL, title TEXT NOT NULL, config TEXT NOT NULL, content TEXT NOT NULL, created_at INTEGER NOT NULL)',
-    'CREATE TABLE IF NOT EXISTS posters (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, open_id TEXT DEFAULT \'\', theme TEXT NOT NULL, grade TEXT NOT NULL, title TEXT NOT NULL, source TEXT NOT NULL, config TEXT NOT NULL, content TEXT NOT NULL, image_url TEXT DEFAULT \'\', created_at INTEGER NOT NULL)'
+    'CREATE TABLE IF NOT EXISTS posters (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, open_id TEXT DEFAULT \'\', theme TEXT NOT NULL, grade TEXT NOT NULL, title TEXT NOT NULL, source TEXT NOT NULL, config TEXT NOT NULL, content TEXT NOT NULL, image_url TEXT DEFAULT \'\', composed_url TEXT DEFAULT \'\', created_at INTEGER NOT NULL)'
   ];
   
   const indexes = [
@@ -62,6 +62,12 @@ function createTables() {
       db.run("ALTER TABLE posters ADD COLUMN image_url TEXT DEFAULT ''", (err) => {
         if (err) {
           console.warn('[DB] posters 加 image_url 列失败（列可能已存在，忽略）:', err.message);
+        }
+        done();
+      });
+      db.run("ALTER TABLE posters ADD COLUMN composed_url TEXT DEFAULT ''", (err) => {
+        if (err) {
+          console.warn('[DB] posters 加 composed_url 列失败（列可能已存在，忽略）:', err.message);
         }
         done();
       });
@@ -304,11 +310,11 @@ function createPoster(poster) {
 function listPosters(accountId) {
   return new Promise((resolve, reject) => {
     db.all(
-      'SELECT id, account_id, theme, grade, title, source, image_url, created_at FROM posters WHERE account_id = ? ORDER BY created_at DESC LIMIT 100',
+      'SELECT id, account_id, theme, grade, title, source, image_url, composed_url, created_at FROM posters WHERE account_id = ? ORDER BY created_at DESC LIMIT 100',
       [accountId],
       (err, rows) => {
         if (err) reject(err);
-        else resolve((rows || []).map(r => ({ ...r, imageUrl: r.image_url || '' })));
+        else resolve((rows || []).map(r => ({ ...r, imageUrl: r.image_url || '', composedUrl: r.composed_url || '' })));
       }
     );
   });
@@ -321,7 +327,7 @@ function getPoster(posterId, accountId) {
       [posterId, accountId],
       (err, row) => {
         if (err) reject(err);
-        else resolve(row ? { ...row, imageUrl: row.image_url || '' } : null);
+        else resolve(row ? { ...row, imageUrl: row.image_url || '', composedUrl: row.composed_url || '' } : null);
       }
     );
   });
@@ -357,8 +363,26 @@ function countPostersToday(accountId, startOfDay) {
 }
 
 /**
- * 统计某账号当日 AI 生图（source = 'image'）数量，用于生图限额（独立于文本生成）
+ * 更新海报的 composed_url（文字合成后的成品图）
  */
+function updatePoster(posterId, accountId, data) {
+  return new Promise((resolve, reject) => {
+    const fields = [];
+    const values = [];
+    if (data.composedUrl !== undefined) { fields.push('composed_url = ?'); values.push(data.composedUrl || ''); }
+    if (fields.length === 0) return resolve(false);
+    values.push(posterId, accountId);
+    db.run(
+      'UPDATE posters SET ' + fields.join(', ') + ' WHERE id = ? AND account_id = ?',
+      values,
+      (err) => {
+        if (err) reject(err);
+        else resolve(this.changes > 0);
+      }
+    );
+  });
+}
+
 function countImagesToday(accountId, startOfDay) {
   return new Promise((resolve, reject) => {
     db.get(
@@ -391,5 +415,6 @@ module.exports = {
   saveSmsCode, verifySmsCode,
   getParentRecord, saveParentRecord, isParentRegistered,
   createExam, listExams, getExam, deleteExam, countExamsToday,
-  createPoster, listPosters, getPoster, deletePoster, countPostersToday, countImagesToday
+  createPoster, listPosters, getPoster, deletePoster, updatePoster,
+  countPostersToday, countImagesToday
 };

@@ -379,7 +379,7 @@ router.get('/list', async (req, res) => {
       grade: r.grade,
       title: r.title,
       source: r.source,
-      imageUrl: r.imageUrl,
+      imageUrl: r.imageUrl, composedUrl: r.composedUrl || r.composed_url || "",
       createdAt: r.created_at
     }));
     res.json({ ok: true, data: { list } });
@@ -473,6 +473,7 @@ router.get('/:id', async (req, res) => {
         title: row.title,
         source: row.source,
         imageUrl: row.imageUrl,
+        composedUrl: row.composedUrl || '',
         createdAt: row.created_at,
         content
       }

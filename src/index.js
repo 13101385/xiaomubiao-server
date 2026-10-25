@@ -30,10 +30,46 @@ const posterRoutes = require('./routes/poster');
 const app = express();
 const PORT = config.port;
 
-// 中间件
+// 中间件（必须在路由之前）
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+
+// 静态文件服务：预合成海报
+const staticPath = path.join(__dirname, '..', 'public', 'composed');
+if (!fs.existsSync(staticPath)) {
+  fs.mkdirSync(staticPath, { recursive: true });
+}
+app.use('/composed', express.static(staticPath));
+
+/**
+ * POST /api/poster/upload-composed
+ * 上传合成海报，保存到 public/composed/ 并更新数据库
+ */
+app.post('/api/poster/upload-composed', express.json({ limit: '50mb' }), (req, res) => {
+  const { posterId, accountId, imageBase64 } = req.body;
+  if (!posterId || !accountId || !imageBase64) {
+    return res.status(400).json({ ok: false, msg: '缺少参数' });
+  }
+  try {
+    // 解析 base64
+    const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    // 保存到本地
+    const filename = posterId + '.png';
+    const filepath = path.join(staticPath, filename);
+    fs.writeFileSync(filepath, buffer);
+
+    // 更新数据库
+    db.updatePoster(posterId, accountId, { composedUrl: '/composed/' + filename })
+      .then(() => res.json({ ok: true, composedUrl: '/composed/' + filename }))
+      .catch(err => res.status(500).json({ ok: false, msg: err.message }));
+  } catch (err) {
+    res.status(500).json({ ok: false, msg: err.message });
+  }
+});
+
 
 // 健康检查
 app.get('/health', (req, res) => {
@@ -59,7 +95,7 @@ app.use((err, req, res, next) => {
 async function start() {
   try {
     await db.init();
-    
+
     app.listen(PORT, () => {
       console.log(`[SERVER] Running on http://localhost:${PORT}`);
       console.log(`[SERVER] Health: http://localhost:${PORT}/health`);

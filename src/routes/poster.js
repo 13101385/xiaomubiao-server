@@ -381,6 +381,32 @@ router.get('/list', async (req, res) => {
 });
 
 /**
+ * GET /api/poster/library?theme=xxx&limit=12
+ * 公共模板成品库（不区分账号）：任何用户进入模板页都能看到预生成成品
+ */
+router.get('/library', async (req, res) => {
+  const { theme, limit } = req.query;
+  if (!theme) return res.status(400).json({ ok: false, msg: '缺少 theme' });
+  try {
+    const rows = await db.listLibraryPosters(String(theme).slice(0, 50), limit);
+    const list = rows.map(r => ({
+      id: r.id,
+      theme: r.theme,
+      grade: r.grade,
+      title: r.title,
+      source: r.source,
+      imageUrl: r.imageUrl,
+      composedUrl: r.composedUrl || '',
+      createdAt: r.created_at
+    }));
+    res.json({ ok: true, data: { list } });
+  } catch (err) {
+    console.error('[POSTER] library error:', err.message);
+    res.status(500).json({ ok: false, msg: '获取模板成品库失败' });
+  }
+});
+
+/**
  * GET /api/poster/composed/:name
  * 返回数据库中存储的成品图（持久卷，重启不丢）
  */

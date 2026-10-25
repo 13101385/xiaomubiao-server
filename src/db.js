@@ -327,6 +327,23 @@ function listPosters(accountId) {
   });
 }
 
+/**
+ * 公共模板成品库：不区分账号，优先返回已合成文字的成品，再按时间倒序
+ */
+function listLibraryPosters(theme, limit) {
+  return new Promise((resolve, reject) => {
+    const n = Math.max(1, Math.min(parseInt(limit, 10) || 12, 50));
+    db.all(
+      "SELECT id, theme, grade, title, source, image_url, composed_url, created_at FROM posters WHERE theme = ? AND source = 'image' AND image_url != '' ORDER BY (composed_url != '') DESC, created_at DESC LIMIT " + n,
+      [theme],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve((rows || []).map(r => ({ ...r, imageUrl: r.image_url || '', composedUrl: r.composed_url || '' })));
+      }
+    );
+  });
+}
+
 function getPoster(posterId, accountId) {
   return new Promise((resolve, reject) => {
     db.get(
@@ -445,7 +462,7 @@ module.exports = {
   saveSmsCode, verifySmsCode,
   getParentRecord, saveParentRecord, isParentRegistered,
   createExam, listExams, getExam, deleteExam, countExamsToday,
-  createPoster, listPosters, getPoster, deletePoster, updatePoster,
+  createPoster, listPosters, listLibraryPosters, getPoster, deletePoster, updatePoster,
   putBlob, getBlob,
   countPostersToday, countImagesToday
 };

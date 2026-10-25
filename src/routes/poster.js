@@ -12,8 +12,8 @@ const db = require('../db');
 const path = require('path');
 const PDFDocument = require('pdfkit');
 
-const DAILY_LIMIT = 20; // 每账号每日 AI 生成上限（防 API 费用失控）
-const IMAGE_DAILY_LIMIT = 10; // 每账号每日 AI 生图上限（生图更贵，独立于文本生成）
+const DAILY_LIMIT = 200; // 每账号每日 AI 生成上限（防 API 费用失控）
+const IMAGE_DAILY_LIMIT = 200; // 每账号每日 AI 生图上限（临时调大，开发测试用）
 const MAX_CUSTOM_LEN = 1200; // 自定义要求最大字数（refine 产物约 400-700 字，放宽到 1200）
 const MAX_STYLE_LEN = 50; // 风格描述最大字数
 

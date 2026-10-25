@@ -165,24 +165,24 @@ function buildImagePrompt(params) {
   const { theme, grade, custom = '', style = '' } = params;
 
   const styleText = String(style).trim() ? String(style).trim() : '卡通可爱';
-  const customText = String(custom).trim()
-    ? `\n【用户的制作要求】（必须严格遵循）\n${String(custom).trim().slice(0, 1000)}`
-    : '';
 
   return `请绘制一张儿童手抄报插画底图，竖版 A4 比例约 3:4，适合打印。
 
 【主题】${theme}
 【年级适配】${grade}（画面元素和复杂度符合该年级学生喜好）
 【画面风格】${styleText}
-${customText}
 
-【画面要求】
-1. 四周环绕精美的主题装饰边框：紧扣「${theme}」主题，包含卡通小朋友、花朵、气球、太阳、云朵、星星、彩带等元素（如节日主题可加灯笼/国旗/烟花，季节主题可加对应植物动物）。
-2. 画面中央约 70% 区域为大面积纯色浅色留白（米白/浅黄/浅蓝），用于后续打印填充文字，不要在中央区域画任何东西。
-3. 【重要】画面中绝对不要出现任何文字、汉字、字母、数字、拼音——标题区和板块区保持纯空白，文字将由系统后期精确排版填入。
-4. 边框装饰要饱满丰富、色彩鲜艳明快（主体颜色 3~4 种），卡通造型圆润可爱，符合小学生审美。
-5. 顶部中央可画一个空白的装饰性标题牌匾轮廓（如丝带/云朵形状的空牌子），牌匾内保持空白无字。
-6. 保持整体干净整洁，适合 A4 打印。${customText}`;
+【版面结构】（必须严格遵守，从上到下分为四个区域）
+1. 顶部标题区（约占画面高度 12%）：一条横向的空白装饰横幅/牌匾，形态要贴合「${theme}」主题（例如春节用红色春联横批或灯笼牌匾、读书日用翻开的书本造型横幅、环保日用树叶缠绕的木牌）。横幅上完全空白，不画任何文字。
+2. 中部主场景区（约占画面高度 55%）：精美丰富的主题场景插画，这是画面主角——包含卡通小朋友的活动场景、主题装饰元素、节日氛围背景，色彩鲜艳、细节饱满、构图完整。
+3. 内容区（约占画面高度 27%）：在场景下方错落分布 3 个空白文本框，形态贴合主题（如春节用空白春联竖条/红纸条、读书日用空白书页、科学日用空白实验记录卡）。每个框约占画面宽度 88%、高度 8%，框与框之间留出均匀间距，框内完全空白不画任何东西。
+4. 底部落款区（约占画面高度 6%）：一条窄窄的空白装饰底边。
+
+【绝对禁止】
+- 全图禁止出现任何文字、汉字、字母、数字、拼音、符号。
+- 所有横幅、牌匾、文本框内必须保持空白，文字将由系统后期精确排版填入。
+
+【画风要求】色彩鲜艳明快（主体 3~4 色）、卡通造型圆润可爱、线条清晰、整体干净整洁适合 A4 打印。`;
 }
 
 /* ==================== 路由 ==================== */
@@ -412,15 +412,17 @@ router.get('/library', async (req, res) => {
  */
 router.get('/composed/:name', async (req, res) => {
   const name = String(req.params.name || '');
-  // 只允许 poster_xxx.png 形式，防目录穿越
-  if (!/^poster_[a-z0-9]+\.png$/i.test(name)) {
+  // 只允许 poster_xxx.(png|jpg) 形式，防目录穿越
+  const m = name.match(/^poster_[a-z0-9]+\.(png|jpg)$/i);
+  if (!m) {
     return res.status(400).json({ ok: false, msg: '非法文件名' });
   }
+  const ext = m[1].toLowerCase();
   try {
     const data = await db.getBlob('composed/' + name);
     if (!data) return res.status(404).json({ ok: false, msg: '成品图不存在' });
     const buf = Buffer.from(data, 'base64');
-    res.set('Content-Type', 'image/png');
+    res.set('Content-Type', ext === 'png' ? 'image/png' : 'image/jpeg');
     res.set('Content-Length', buf.length);
     res.set('Cache-Control', 'public, max-age=604800');
     res.send(buf);

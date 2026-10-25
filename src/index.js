@@ -31,13 +31,16 @@ const app = express();
 const PORT = config.port;
 
 // 中间件（必须在路由之前）
-app.use(helmet({ contentSecurityPolicy: false }));
+// crossOriginResourcePolicy 放开：小程序开发者工具的图片渲染器会遵循 CORP，
+// same-origin 会导致 <image> 远程图空白（预览大图走原生生涯不受影响）
+app.use(helmet({ contentSecurityPolicy: false, crossOriginResourcePolicy: { policy: 'cross-origin' } }));
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
 /**
  * POST /api/poster/upload-composed
  * 上传合成海报：base64 存入数据库（持久卷），重启不丢
+ * ext 可选 png/jpg（默认按 base64 魔数自动识别）
  */
 app.post('/api/poster/upload-composed', (req, res) => {
   const { posterId, accountId, imageBase64 } = req.body;
@@ -45,8 +48,14 @@ app.post('/api/poster/upload-composed', (req, res) => {
     return res.status(400).json({ ok: false, msg: '缺少参数' });
   }
   const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-  const key = 'composed/' + posterId + '.png';
-  const url = '/api/poster/composed/' + posterId + '.png';
+  // 依据魔数识别类型：JPEG(FFD8) / PNG(89 50)
+  let ext = String(req.body.ext || '').toLowerCase();
+  if (ext !== 'jpg' && ext !== 'png') {
+    const head = Buffer.from(base64Data.slice(0, 8), 'base64');
+    ext = (head[0] === 0xFF && head[1] === 0xD8) ? 'jpg' : 'png';
+  }
+  const key = 'composed/' + posterId + '.' + ext;
+  const url = '/api/poster/composed/' + posterId + '.' + ext;
 
   db.putBlob(key, base64Data)
     .then(() => db.updatePoster(posterId, accountId, { composedUrl: url }))

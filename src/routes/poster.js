@@ -67,7 +67,7 @@ async function callAgnes(prompt, opts) {
  * 调用 agnes（OpenAI 兼容）文生图，返回生成图片的 url
  * 返回结构：{ data: [ { url: "https://...", revised_prompt: "..." } ] }
  */
-async function callAgnesImage(prompt) {
+async function callAgnesImage(prompt, size) {
   const { apiKey, baseURL, timeoutMs } = config.agnes;
   if (!apiKey) {
     throw new Error('服务器未配置 AGNES_AI_API_KEY');
@@ -76,7 +76,7 @@ async function callAgnesImage(prompt) {
   const resp = await axios.post(baseURL + '/images/generations', {
     model,
     prompt,
-    size: '1024x1536'
+    size: size || '1024x1536'
   }, {
     headers: {
       'Authorization': 'Bearer ' + apiKey,
@@ -162,9 +162,18 @@ ${customText}
  * 标题与正文文字由 PDF 排版系统精确填入
  */
 function buildImagePrompt(params) {
-  const { theme, grade, custom = '', style = '' } = params;
+  const { theme, grade, custom = '', style = '', mode = '' } = params;
 
   const styleText = String(style).trim() ? String(style).trim() : '卡通可爱';
+
+  /* 插画模式：为「图文分栏融合版式」生成无文字的横幅场景插画 */
+  if (mode === 'illustration') {
+    const scene = String(custom).trim().slice(0, 400) || (theme + '主题的欢乐卡通场景');
+    return `绘制一张横向的儿童插画横幅，卡通风格：${styleText}。
+画面内容：${scene}。
+【要求】画面饱满、色彩鲜艳、主体突出、细节丰富；适合作为手抄报的题头插画。
+【绝对禁止】画面中不得出现任何文字、汉字、字母、数字、拼音、水印、签名。`;
+  }
 
   return `请绘制一张儿童手抄报插画底图，竖版 A4 比例约 3:4，适合打印。
 
@@ -268,13 +277,18 @@ router.post('/generate-image', async (req, res) => {
 
   try {
     const prompt = buildImagePrompt(req.body);
-    // 生图同时顺带生成文字方案（用于 PDF 排版填充真实文字）；文字失败不影响出图
+    // 插画模式可指定横幅尺寸（默认竖版 1024x1536）
+    const imgSize = req.body && req.body.size === 'landscape' ? '1536x1024'
+      : (req.body && req.body.size === 'square' ? '1024x1024' : '');
+    // 生图同时顺带生成文字方案（用于 PDF 排版填充真实文字）；插画模式跳过文字方案
     const [url, plan] = await Promise.all([
-      callAgnesImage(prompt),
-      callAgnes(buildPrompt(req.body)).catch((e) => {
-        console.warn('[POSTER] 生图伴随文字方案生成失败(降级纯图):', e.message);
-        return null;
-      })
+      callAgnesImage(prompt, imgSize),
+      req.body && req.body.mode === 'illustration'
+        ? Promise.resolve(null)
+        : callAgnes(buildPrompt(req.body)).catch((e) => {
+            console.warn('[POSTER] 生图伴随文字方案生成失败(降级纯图):', e.message);
+            return null;
+          })
     ]);
 
     const record = {

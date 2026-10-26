@@ -155,13 +155,31 @@ router.post('/parent-setup', async (req, res) => {
   try {
     // 哈希 PIN
     const pinHash = crypto.createHash('sha256').update(pin).digest('hex');
-    
+
     const record = await db.saveParentRecord(accountId, parentName, pinHash);
-    
+
     res.json({ ok: true, record });
   } catch (err) {
     console.error('[PARENT] Setup error:', err.message);
     res.status(500).json({ ok: false, msg: '服务器错误' });
+  }
+});
+
+/**
+ * POST /api/auth/delete-account
+ * 注销账号：删除该账号在服务器端的全部数据（家长记录/试卷/手抄报及成品图）
+ * body: { accountId }
+ */
+router.post('/delete-account', async (req, res) => {
+  const { accountId } = req.body || {};
+  if (!accountId) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
+  try {
+    await db.deleteAccountData(accountId);
+    console.log('[AUTH] 账号已注销:', accountId);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('[AUTH] delete-account error:', err.message);
+    res.status(500).json({ ok: false, msg: '注销失败，请稍后再试' });
   }
 });
 

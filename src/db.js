@@ -456,6 +456,31 @@ function close() {
   });
 }
 
+/**
+ * 注销账号：删除该账号的全部数据（家长记录/试卷/手抄报及成品图）
+ */
+function deleteAccountData(accountId) {
+  return new Promise((resolve, reject) => {
+    db.serialize(() => {
+      db.all('SELECT id FROM posters WHERE account_id = ?', [accountId], (err, rows) => {
+        if (err) return reject(err);
+        const ids = (rows || []).map(r => r.id);
+        const keys = [];
+        ids.forEach(id => { keys.push('composed/' + id + '.jpg', 'composed/' + id + '.png'); });
+        const finish = (e) => (e ? reject(e) : resolve(true));
+        db.run('DELETE FROM posters WHERE account_id = ?', [accountId]);
+        db.run('DELETE FROM exams WHERE account_id = ?', [accountId]);
+        db.run('DELETE FROM parent_records WHERE account_id = ?', [accountId], (e2) => {
+          if (e2) return finish(e2);
+          if (!keys.length) return finish();
+          const ph = keys.map(() => '?').join(',');
+          db.run('DELETE FROM poster_blobs WHERE key IN (' + ph + ')', keys, finish);
+        });
+      });
+    });
+  });
+}
+
 module.exports = {
   init, close,
   getUserByOpenId, getUserByPhone, upsertUser, updateUserName,
@@ -464,5 +489,6 @@ module.exports = {
   createExam, listExams, getExam, deleteExam, countExamsToday,
   createPoster, listPosters, listLibraryPosters, getPoster, deletePoster, updatePoster,
   putBlob, getBlob,
+  deleteAccountData,
   countPostersToday, countImagesToday
 };

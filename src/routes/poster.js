@@ -370,6 +370,38 @@ router.post('/save', async (req, res) => {
 });
 
 /**
+ * POST /api/poster/create-slot
+ * 为成品库槽位创建独立记录（复用已有底图 URL，供不同排版成品各自挂载）
+ * body: { accountId, theme, grade, imageUrl, title }
+ */
+router.post('/create-slot', async (req, res) => {
+  const { accountId, theme, grade, imageUrl, title = '' } = req.body || {};
+  if (!accountId || !theme || !imageUrl) {
+    return res.status(400).json({ ok: false, msg: '缺少参数' });
+  }
+  try {
+    const record = {
+      id: 'poster_' + crypto.randomBytes(8).toString('hex'),
+      accountId,
+      openId: '',
+      theme: String(theme).trim(),
+      grade: GRADES.includes(grade) ? grade : '小学三年级',
+      title: String(title).trim() || (String(theme).trim() + '手抄报'),
+      source: 'image',
+      config: JSON.stringify({ theme, slot: true }),
+      content: JSON.stringify({ slot: true, baseImageUrl: imageUrl }),
+      imageUrl: String(imageUrl),
+      createdAt: Date.now()
+    };
+    await db.createPoster(record);
+    res.json({ ok: true, posterId: record.id });
+  } catch (err) {
+    console.error('[POSTER] create-slot error:', err.message);
+    res.status(500).json({ ok: false, msg: '创建槽位失败：' + err.message });
+  }
+});
+
+/**
  * GET /api/poster/list?accountId=xxx
  * 我的手抄报列表
  */

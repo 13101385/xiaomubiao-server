@@ -26,6 +26,7 @@ const db = require('./db');
 const authRoutes = require('./routes/auth');
 const examRoutes = require('./routes/exam');
 const posterRoutes = require('./routes/poster');
+const chatRoutes = require('./routes/chat');
 
 const app = express();
 const PORT = config.port;
@@ -79,6 +80,7 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/exam', examRoutes);
 app.use('/api/poster', posterRoutes);
+app.use('/api/chat', chatRoutes);
 
 // 错误处理
 app.use((err, req, res, next) => {

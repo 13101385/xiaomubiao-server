@@ -344,6 +344,24 @@ function listLibraryPosters(theme, limit) {
   });
 }
 
+
+/** 管理用：列出全部成品图（含 account_id），用于批量重合成 */
+function allPostersForAdmin() {
+  return new Promise((resolve, reject) => {
+    db.all(
+      "SELECT id, theme, title, source, image_url, composed_url, account_id FROM posters ORDER BY created_at DESC",
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve((rows || []).map(r => ({
+          id: r.id, theme: r.theme, title: r.title, source: r.source,
+          imageUrl: r.image_url || '', composedUrl: r.composed_url || '',
+          accountId: r.account_id || ''
+        })));
+      }
+    );
+  });
+}
+
 function getPoster(posterId, accountId) {
   return new Promise((resolve, reject) => {
     db.get(
@@ -487,7 +505,7 @@ module.exports = {
   saveSmsCode, verifySmsCode,
   getParentRecord, saveParentRecord, isParentRegistered,
   createExam, listExams, getExam, deleteExam, countExamsToday,
-  createPoster, listPosters, listLibraryPosters, getPoster, deletePoster, updatePoster,
+  createPoster, listPosters, listLibraryPosters, allPostersForAdmin, getPoster, deletePoster, updatePoster,
   putBlob, getBlob,
   deleteAccountData,
   countPostersToday, countImagesToday

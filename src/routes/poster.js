@@ -401,6 +401,25 @@ router.post('/create-slot', async (req, res) => {
   }
 });
 
+
+/**
+ * GET /api/poster/admin-list?secret=xxx
+ * 管理用：列出全部成品图（含 account_id），用于批量重合成
+ */
+router.get('/admin-list', async (req, res) => {
+  const { secret } = req.query;
+  if (secret !== (process.env.ADMIN_SECRET || 'gp-admin-2026')) {
+    return res.status(403).json({ ok: false, msg: '无权限' });
+  }
+  try {
+    const list = await db.allPostersForAdmin();
+    res.json({ ok: true, data: { list } });
+  } catch (err) {
+    console.error('[POSTER] admin-list error:', err.message);
+    res.status(500).json({ ok: false, msg: '获取失败' });
+  }
+});
+
 /**
  * GET /api/poster/list?accountId=xxx
  * 我的手抄报列表

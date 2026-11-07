@@ -166,6 +166,23 @@ function buildImagePrompt(params) {
 
   const styleText = String(style).trim() ? String(style).trim() : '卡通可爱';
 
+  /* 整图模式：AI 一次性画出「插画 + 文字」的完整手抄报 */
+  if (mode === 'full') {
+    const c = params.content || {};
+    const secs = (Array.isArray(c.sections) ? c.sections : []).slice(0, 4)
+      .map((s, i) => `【板块${i + 1}】标题「${s.title}」\n正文：${(s.content || '').slice(0, 60)}`)
+      .join('\n');
+    return `绘制一张竖版 A4 比例 3:4 的儿童手抄报，主题「${theme}」（${grade}）。
+【画风】扁平卡通（flat cartoon），色彩鲜艳明快，构图整洁，适合 A4 直接打印。
+【顶部标题】醒目大标题「${c.title || theme}」${c.subtitle ? '，副标题「' + c.subtitle + '」' : ''}
+${secs}
+【硬性要求】
+- 所有中文必须清晰、正确、无错别字、无乱码、无重复字。
+- 标题醒目，板块标题与正文层级清楚。
+- 文字与插画自然融合，像一张真正的黑板报/手抄报。
+- 除上面指定的文字外，画面中不要出现其他任何文字。`;
+  }
+
   /* 插画模式：为「图文分栏融合版式」生成无文字的横幅场景插画 */
   if (mode === 'illustration') {
     const scene = String(custom).trim().slice(0, 400) || (theme + '主题的欢乐卡通场景');
@@ -283,7 +300,7 @@ router.post('/generate-image', async (req, res) => {
     // 生图同时顺带生成文字方案（用于 PDF 排版填充真实文字）；插画模式跳过文字方案
     const [url, plan] = await Promise.all([
       callAgnesImage(prompt, imgSize),
-      req.body && req.body.mode === 'illustration'
+      req.body && (req.body.mode === 'illustration' || req.body.mode === 'full')
         ? Promise.resolve(null)
         : callAgnes(buildPrompt(req.body)).catch((e) => {
             console.warn('[POSTER] 生图伴随文字方案生成失败(降级纯图):', e.message);

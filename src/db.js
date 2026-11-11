@@ -27,7 +27,7 @@ async function init() {
 function createTables() {
   const tables = [
     'CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, open_id TEXT UNIQUE, phone TEXT UNIQUE, login_type TEXT NOT NULL, name TEXT DEFAULT \'\', pin_hash TEXT DEFAULT \'\', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)',
-    'CREATE TABLE IF NOT EXISTS parent_records (account_id TEXT PRIMARY KEY, parent_name TEXT NOT NULL, pin_hash TEXT NOT NULL, has_registered INTEGER DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS parent_records (account_id TEXT PRIMARY KEY, parent_name TEXT NOT NULL, pin_hash TEXT NOT NULL, has_registered INTEGER DEFAULT 0, avatar_key TEXT DEFAULT \'\', avatar_type TEXT DEFAULT \'\', avatar_updated_at INTEGER DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS sms_codes (phone TEXT NOT NULL, code TEXT NOT NULL, expires_at INTEGER NOT NULL, used INTEGER DEFAULT 0, created_at INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS exams (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, open_id TEXT DEFAULT \'\', subject TEXT NOT NULL, grade TEXT NOT NULL, title TEXT NOT NULL, config TEXT NOT NULL, content TEXT NOT NULL, created_at INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS posters (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, open_id TEXT DEFAULT \'\', theme TEXT NOT NULL, grade TEXT NOT NULL, title TEXT NOT NULL, source TEXT NOT NULL, config TEXT NOT NULL, content TEXT NOT NULL, image_url TEXT DEFAULT \'\', composed_url TEXT DEFAULT \'\', created_at INTEGER NOT NULL)',
@@ -46,8 +46,8 @@ function createTables() {
   return new Promise((resolve, reject) => {
     db.serialize(() => {
       let count = 0;
-      // +2：两条幂等加列 ALTER TABLE
-      const total = tables.length + indexes.length + 2;
+      // +5：五条幂等加列 ALTER TABLE（posters 两列 + parent_records 头像三列）
+      const total = tables.length + indexes.length + 5;
       const done = () => {
         count++;
         if (count === total) {
@@ -69,6 +69,25 @@ function createTables() {
       db.run("ALTER TABLE posters ADD COLUMN composed_url TEXT DEFAULT ''", (err) => {
         if (err) {
           console.warn('[DB] posters 加 composed_url 列失败（列可能已存在，忽略）:', err.message);
+        }
+        done();
+      });
+      // 幂等加列：parent_records 头像字段（老库兼容，列已存在时忽略报错）
+      db.run("ALTER TABLE parent_records ADD COLUMN avatar_key TEXT DEFAULT ''", (err) => {
+        if (err) {
+          console.warn('[DB] parent_records 加 avatar_key 列失败（列可能已存在，忽略）:', err.message);
+        }
+        done();
+      });
+      db.run("ALTER TABLE parent_records ADD COLUMN avatar_type TEXT DEFAULT ''", (err) => {
+        if (err) {
+          console.warn('[DB] parent_records 加 avatar_type 列失败（列可能已存在，忽略）:', err.message);
+        }
+        done();
+      });
+      db.run("ALTER TABLE parent_records ADD COLUMN avatar_updated_at INTEGER DEFAULT 0", (err) => {
+        if (err) {
+          console.warn('[DB] parent_records 加 avatar_updated_at 列失败（列可能已存在，忽略）:', err.message);
         }
         done();
       });
@@ -212,6 +231,63 @@ function saveParentRecord(accountId, parentName, pinHash) {
           (err) => {
             if (err) return reject(err);
             resolve({ accountId, parentName, hasRegistered: 1 });
+          }
+        );
+      }
+    });
+  });
+}
+
+/**
+ * 家长资料同步（头像/昵称）：按 accountId upsert，不触碰 pin_hash / has_registered
+ * 行不存在则插入（pin_hash 置空字符串、has_registered 保持 0），注册逻辑仍走 saveParentRecord
+ * @param {string} accountId
+ * @param {{name?: string, avatarKey?: string, avatarType?: string, avatarUpdatedAt?: number}} fields
+ * @returns {Promise<object|null>} 更新后的 parent_records 行
+ */
+function upsertParentProfile(accountId, fields) {
+  const now = Date.now();
+  const name = fields && typeof fields.name === 'string' ? fields.name : undefined;
+  const avatarKey = fields && typeof fields.avatarKey === 'string' ? fields.avatarKey : undefined;
+  const avatarType = fields && typeof fields.avatarType === 'string' ? fields.avatarType : undefined;
+  const avatarUpdatedAt = fields && fields.avatarUpdatedAt ? fields.avatarUpdatedAt : undefined;
+
+  return new Promise((resolve, reject) => {
+    db.get('SELECT account_id FROM parent_records WHERE account_id = ?', [accountId], (err, row) => {
+      if (err) return reject(err);
+
+      if (row) {
+        const sets = [];
+        const values = [];
+        if (name !== undefined) { sets.push('parent_name = ?'); values.push(name); }
+        if (avatarKey !== undefined) { sets.push('avatar_key = ?'); values.push(avatarKey); }
+        if (avatarType !== undefined) { sets.push('avatar_type = ?'); values.push(avatarType); }
+        if (avatarUpdatedAt !== undefined) { sets.push('avatar_updated_at = ?'); values.push(avatarUpdatedAt); }
+        sets.push('updated_at = ?');
+        values.push(now, accountId);
+        db.run(
+          'UPDATE parent_records SET ' + sets.join(', ') + ' WHERE account_id = ?',
+          values,
+          (err2) => {
+            if (err2) return reject(err2);
+            getParentRecord(accountId).then(resolve).catch(reject);
+          }
+        );
+      } else {
+        db.run(
+          'INSERT INTO parent_records (account_id, parent_name, pin_hash, has_registered, avatar_key, avatar_type, avatar_updated_at, created_at, updated_at) VALUES (?, ?, ?, 0, ?, ?, ?, ?, ?)',
+          [
+            accountId,
+            name !== undefined ? name : '',
+            '',
+            avatarKey !== undefined ? avatarKey : '',
+            avatarType !== undefined ? avatarType : '',
+            avatarUpdatedAt !== undefined ? avatarUpdatedAt : 0,
+            now, now
+          ],
+          (err2) => {
+            if (err2) return reject(err2);
+            getParentRecord(accountId).then(resolve).catch(reject);
           }
         );
       }
@@ -483,7 +559,7 @@ function deleteAccountData(accountId) {
       db.all('SELECT id FROM posters WHERE account_id = ?', [accountId], (err, rows) => {
         if (err) return reject(err);
         const ids = (rows || []).map(r => r.id);
-        const keys = [];
+        const keys = ['avatar:' + accountId];
         ids.forEach(id => { keys.push('composed/' + id + '.jpg', 'composed/' + id + '.png'); });
         const finish = (e) => (e ? reject(e) : resolve(true));
         db.run('DELETE FROM posters WHERE account_id = ?', [accountId]);
@@ -503,7 +579,7 @@ module.exports = {
   init, close,
   getUserByOpenId, getUserByPhone, upsertUser, updateUserName,
   saveSmsCode, verifySmsCode,
-  getParentRecord, saveParentRecord, isParentRegistered,
+  getParentRecord, saveParentRecord, upsertParentProfile, isParentRegistered,
   createExam, listExams, getExam, deleteExam, countExamsToday,
   createPoster, listPosters, listLibraryPosters, allPostersForAdmin, getPoster, deletePoster, updatePoster,
   putBlob, getBlob,

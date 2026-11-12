@@ -6,14 +6,19 @@
  *    成功后额度 -1 并标记 reminded_start，绝不重复。
  * 2) 未完成提醒：每天 20:30–21:30 窗口内（错过 20:30 可补发，sent_log 保证每账号每天 ≤1 条）：
  *    当日仍有 todo/doing 任务的账号发一条汇总。
+ * 3) 每日精选：每天 07:30–08:30 窗口内，对开启每日精选（同步字段 dailyPush）且有
+ *    今日卡钩子的账号，用「备忘录任务提醒」模板（与开始提醒共用额度池）推一条
+ *    今日亲子话题；sent_log（kind='daily'）保证每账号每天 ≤1 条。
  */
 const db = require('./db');
 const wxapi = require('./wxapi');
-const { TEMPLATES, buildStartData, buildDueData } = require('./reminder-config');
+const { TEMPLATES, buildStartData, buildDueData, buildDailyData } = require('./reminder-config');
 
 const TICK_MS = 5 * 60 * 1000;
 const DUE_START_MIN = 20 * 60 + 30; // 20:30
 const DUE_END_MIN = 21 * 60 + 30;   // 21:30
+const DAILY_START_MIN = 7 * 60 + 30; // 07:30
+const DAILY_END_MIN = 8 * 60 + 30;   // 08:30
 
 let timer = null;
 let ticking = false;
@@ -105,11 +110,31 @@ async function scanDueReminders(now) {
   }
 }
 
+async function scanDailyPush(now) {
+  if (now.minutes < DAILY_START_MIN || now.minutes > DAILY_END_MIN) return;
+  const targets = await db.listDailyPushTargets(now.date);
+  for (const h of targets) {
+    if (await db.hasSentLog(h.account_id, 'daily', now.date)) continue;
+    // 每日精选复用开始提醒模板：查同一模板的 openid 与共用额度池
+    const sub = await db.getReminderSub(h.account_id, TEMPLATES.start);
+    if (!sub || !sub.open_id || sub.quota <= 0) continue;
+    const ok = await sendAndSettle(
+      h.account_id, TEMPLATES.start, sub.open_id,
+      buildDailyData(h.topic_q, now.date)
+    );
+    if (ok) {
+      await db.addSentLog(h.account_id, 'daily', now.date);
+      console.log('[REMINDER] 每日精选已发送:', h.account_id, h.topic_q);
+    }
+  }
+}
+
 async function tick() {
   if (ticking) return;
   ticking = true;
   try {
     const now = shanghaiNow();
+    await scanDailyPush(now);
     await scanStartReminders(now);
     await scanDueReminders(now);
     await db.cleanupReminderData(addDays(now.date, -1), addDays(now.date, -7));
@@ -129,4 +154,4 @@ function startReminderScheduler() {
   console.log('[REMINDER] 调度已启动（每 5 分钟，Asia/Shanghai）');
 }
 
-module.exports = { startReminderScheduler, _tick: tick, _shanghaiNow: shanghaiNow };
+module.exports = { startReminderScheduler, _tick: tick, _shanghaiNow: shanghaiNow, _scanDailyPush: scanDailyPush };

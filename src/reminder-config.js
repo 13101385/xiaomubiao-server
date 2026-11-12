@@ -61,4 +61,20 @@ thing4: thing('睡前陪孩子一起收尾吧')
 };
 }
 
-module.exports = { TEMPLATES, TEMPLATE_IDS, kindOfTemplate, buildStartData, buildDueData};
+/**
+ * 每日精选 payload：复用「备忘录任务提醒」模板（与开始提醒共用模板与额度池）。
+ * 提醒标题「今日亲子话题：{问题}」；thing 上限 20 字：问题过长时截断并加省略号
+ * （推送只是钩子，完整问题在小程序今日卡里看）。
+ */
+function buildDailyData(topicQ, date) {
+const prefix = '今日亲子话题：';
+let q = String(topicQ || '今天和孩子聊点什么？');
+if ((prefix + q).length > 20) q = q.slice(0, 20 - prefix.length - 1) + '…';
+return {
+thing1: thing(prefix + q),
+time2: timeVal(date + ' 07:30'),
+thing3: thing('点开看看答案和今天的科普，陪孩子聊 2 分钟')
+};
+}
+
+module.exports = { TEMPLATES, TEMPLATE_IDS, kindOfTemplate, buildStartData, buildDueData, buildDailyData};

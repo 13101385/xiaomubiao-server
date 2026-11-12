@@ -95,7 +95,7 @@ if (secs.length <= MAX_GRID_SECTIONS) return secs;
 const head = secs.slice(0, MAX_GRID_SECTIONS - 1);
 const tail = secs.slice(MAX_GRID_SECTIONS - 1);
 const merged = {
-icon: tail[0].icon || '📌',
+icon: tail[0].icon || '📝',
 title: tail.map(s => s.title || '').filter(Boolean).join(' · '),
 content: tail.map(s => s.content || '').filter(Boolean).join(' '),
 bullets: tail.flatMap(s => Array.isArray(s.bullets)? s.bullets: [])
@@ -109,7 +109,7 @@ const { heroImg, motif = 'star'} = opts || {};
 if (!heroImg) throw new Error('renderPosterV2 需要 heroImg（已 loadImage 的插画）');
 const cards = toCards(tpl.sections);
 if (!cards.length) throw new Error('renderPosterV2 方案缺少板块');
-await R.preloadEmojis([tpl.emoji, '✏️', '📌',...cards.map(s => s.icon)]);
+await R.preloadEmojis([tpl.emoji, '✏️', '📝',...cards.map(s => s.icon)]);
 const pal = buildPalette(tpl);
 const canvas = createCanvas(W, H);
 const ctx = canvas.getContext('2d');
@@ -202,7 +202,7 @@ ctx.fillStyle = headColor;
 ctx.beginPath(); ctx.arc(cx + 46, cy + 42, 40, 0, Math.PI * 2); ctx.fill();
 ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 5;
 ctx.beginPath(); ctx.arc(cx + 46, cy + 42, 40, 0, Math.PI * 2); ctx.stroke();
-R.drawEmoji(ctx, sec.icon, cx + 46, cy + 42, 50, '#FFFFFF');
+R.drawBadgeIcon(ctx, sec.icon, i, cx + 46, cy + 42, 50, '#FFFFFF');
 R.setFont(ctx, 41, true);
 ctx.fillStyle = headColor;
 ctx.textAlign = 'left'; ctx.textBaseline = 'middle';

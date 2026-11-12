@@ -9,6 +9,7 @@ const crypto = require('crypto');
 const router = express.Router();
 const { config } = require('../config');
 const db = require('../db');
+const examQuality = require('../exam-quality');
 const path = require('path');
 const fs = require('fs');
 const Jimp = require('jimp');
@@ -116,12 +117,21 @@ function buildPrompt(params) {
     `${s.name} ${s.count} 题，每题 ${s.score} 分`
   ).join('；');
 
+  const noEnglish = subject === '语文'
+    ? '\n【特别注意】这是语文试卷：所有题干、选项、答案、解析中禁止出现任何英文单词（汉语拼音除外）。'
+    : '';
+
   return `为「${grade}·${subject}」生成一份${difficulty}难度试卷。
 知识点：${knowledge || '该年级核心知识点'}
 时长：${durationMin}分钟。
 
 【必须严格生成的题型和数量】
 ${sectionDesc || '（未选择任何题型）'}
+
+【命题质量要求（务必逐条落实）】
+- 每道题都必须带 "analysis" 解析字段（1~2 句，讲清解题思路或依据），不许省略。
+- 每道题答案必须唯一且绝对正确：出题后自己先验算/核对一遍；选择题 4 个选项只有一个正确，其余似是而非但明确错误，绝不许出现两个都对的选项。
+- 判断题的 answer 只能写 "对" 或 "错"；填空题 answer 写应填入的内容；只有选择题才有 options 字段。${noEnglish}
 
 【JSON格式】只输出JSON，不要任何其他文字：
 {
@@ -137,7 +147,7 @@ ${sectionDesc || '（未选择任何题型）'}
       "scorePer": ${s.score},
       "instructions": "${s.name}共${s.count}小题",
       "questions": [
-        ${Array(s.count).fill('{ "q": "题目", "options": ["A","B","C","D"], "answer": "A", "score": 2 }').join(',\n        ')}
+        ${Array(s.count).fill('{ "q": "题目", "options": ["选项1","选项2","选项3","选项4"], "answer": "A", "analysis": "解析", "score": ' + s.score + ' }').join(',\n        ')}
       ]
     }`).join(',\n    ')}
   ]
@@ -185,6 +195,30 @@ router.post('/generate', async (req, res) => {
     // 校验返回结构
     if (!exam.sections || !Array.isArray(exam.sections) || !exam.sections.length) {
       throw new Error('AI 返回的试卷缺少题目');
+    }
+    // 板块 type 兜底校正（以请求参数的题型顺序为准，避免 AI 写错 type 影响配分/复核）
+    const requestedTypes = ['choice', 'fill', 'trueFalse', 'shortAnswer', 'calculation', 'essay']
+      .filter(t => (Number(counts[t]) || 0) > 0);
+    exam.sections.forEach((sec, i) => {
+      if (!examQuality.BASE_SCORES[sec.type] && requestedTypes[i]) sec.type = requestedTypes[i];
+      if (!sec.name) sec.name = examQuality.TYPE_NAMES[sec.type] || '题目';
+    });
+
+    // 质量管线：补解析 → 规则校验 → 客观题盲解复核 → 不合格重出/换题/丢弃 → 总分归一化（恒 100）
+    try {
+      const { report } = await examQuality.processExam(exam, {
+        subject, grade, difficulty, knowledge
+      }, (p) => callAgnes(p));
+      exam.quality = report;
+      console.log('[EXAM] 质量复核完成:', JSON.stringify(report));
+    } catch (qErr) {
+      // 管线异常不阻断交付，但总分归一化必须执行
+      console.error('[EXAM] 质量管线异常（降级归一化）:', qErr.message);
+      examQuality.normalizeScores(exam);
+    }
+    const remainQuestions = exam.sections.reduce((a, s) => a + (s.questions || []).length, 0);
+    if (!remainQuestions) {
+      throw new Error('试卷质量复核后无可用题目，请重试');
     }
 
     const record = {

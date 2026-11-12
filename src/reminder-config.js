@@ -77,4 +77,16 @@ thing3: thing('点开看看答案和今天的科普，陪孩子聊 2 分钟')
 };
 }
 
-module.exports = { TEMPLATES, TEMPLATE_IDS, kindOfTemplate, buildStartData, buildDueData, buildDailyData};
+/**
+ * 测试提醒 payload：复用「备忘录任务提醒」模板，设置页「发一条测试提醒」立即发送。
+ * dateTime 为上海当前时间 'YYYY-MM-DD HH:mm'。
+ */
+function buildTestData(dateTime) {
+return {
+thing1: thing('测试提醒：通道已打通'),
+time2: timeVal(dateTime),
+thing3: thing('明早 7:30 你会收到今日精选')
+};
+}
+
+module.exports = { TEMPLATES, TEMPLATE_IDS, kindOfTemplate, buildStartData, buildDueData, buildDailyData, buildTestData};

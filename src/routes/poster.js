@@ -26,6 +26,9 @@ function loadCompose() {
   if (!_compose) throw new Error('服务端合成引擎不可用，请稍后重试');
   return _compose;
 }
+/* emoji 素材清单（无原生依赖，可直接加载）：提示词选图约束与方案图标净化共用，
+ * 保证 AI 选的板块图标一定有本地 SVG 素材可全彩绘制，不再画出码点文字 */
+const emojiAssets = require('../poster-render/emoji-assets');
 
 const DAILY_LIMIT = 200; // 每账号每日 AI 文字生成上限（防 API 费用失控）
 const MAX_CUSTOM_LEN = 1200; // 自定义要求最大字数（refine 产物约 400-700 字，放宽到 1200）
@@ -140,6 +143,11 @@ function buildPrompt(params) {
   const customText = String(custom).trim()
     ? `\n【用户的制作要求】（必须严格遵循，逐条落实到方案里）\n${String(custom).trim().slice(0, 1100)}`
     : '';
+  // 图标只能从本地素材清单里选（清单动态读取素材目录，清单外图标渲染不出彩色图）
+  const iconPool = emojiAssets.availableEmojis();
+  const iconRule = iconPool.length
+    ? `\n- 每个板块的 icon 只能从下面这组图标里选一个最贴切的，清单之外的图标一律不要用：${iconPool.join(' ')}`
+    : '';
 
   return `请为小学主题手抄报设计一份完整方案。
 
@@ -165,7 +173,7 @@ ${customText}
 }
 
 【要求】
-- sections 4~6 个板块，内容具体、紧扣「${theme}」主题
+- sections 4~6 个板块，内容具体、紧扣「${theme}」主题${iconRule}
 - 每个板块的 content 控制在 60~120 字，bullets 2~5 条
 - colorScheme 三个颜色都必须是 #RRGGBB 格式
 - title 控制在 12 个字以内`;
@@ -263,6 +271,8 @@ router.post('/generate', async (req, res) => {
     if (!poster.title || !poster.sections || !Array.isArray(poster.sections) || poster.sections.length < 4) {
       throw new Error('AI 返回的手抄报缺少板块（至少 4 个）');
     }
+    // 图标净化：清单外图标映射到清单内近似/默认图标（落库即净化，详情/PDF/合成同口径）
+    emojiAssets.sanitizePlanIcons(poster);
 
     const record = {
       id: 'poster_' + crypto.randomBytes(8).toString('hex'),
@@ -356,6 +366,8 @@ router.post('/generate-image', async (req, res) => {
     if (!plan || !Array.isArray(plan.sections) || plan.sections.length < 1) {
       throw new Error('AI 返回的方案缺少板块');
     }
+    // 图标净化：清单外图标（如 🔥🛟👫📞）映射到清单内近似/默认图标，角标不再画码点文字
+    emojiAssets.sanitizePlanIcons(plan);
 
     const heroResp = await axios.get(url, { responseType: 'arraybuffer', timeout: 30000 });
     const heroBuf = Buffer.from(heroResp.data || []);

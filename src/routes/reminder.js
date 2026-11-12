@@ -8,6 +8,8 @@
  *                                另接受顶层 dailyPush（每日精选开关）与每日 hook（今日卡钩子：
  *                                亲子话题问题/科普标题/年龄档），供早间每日精选推送引用
  * POST /api/reminder/status     查询两模板剩余额度（设置页展示）
+ * POST /api/reminder/test       立即发送一条测试提醒（开始提醒模板，落点今日精选页），
+ *                                成功扣 1 条额度并记 sent_log(kind='test')；失败带 errcode 回前端排查
  *
  * openid 来源：请求可带 wx.login 的 code，后端 code2session 换取并落库；
  * 不带 code 时复用已存的 open_id。手机号登录账号同样可用（code 换得的 openid
@@ -17,7 +19,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const wxapi = require('../wxapi');
-const { TEMPLATES, TEMPLATE_IDS, kindOfTemplate } = require('../reminder-config');
+const { TEMPLATES, TEMPLATE_IDS, kindOfTemplate, buildTestData } = require('../reminder-config');
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^\d{1,2}:\d{2}$/;
@@ -102,6 +104,71 @@ router.post('/sync', async (req, res) => {
   } catch (err) {
     console.error('[REMINDER] sync error:', err.message);
     res.status(500).json({ ok: false, msg: '同步失败，请稍后再试' });
+  }
+});
+
+/** 上海当前时间：{ date: 'YYYY-MM-DD', text: 'YYYY-MM-DD HH:mm' }（UTC+8 恒定） */
+function shanghaiNowText() {
+  const p = n => String(n).padStart(2, '0');
+  const d = new Date(Date.now() + 8 * 3600 * 1000);
+  const date = d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate());
+  return { date, text: date + ' ' + p(d.getUTCHours()) + ':' + p(d.getUTCMinutes()) };
+}
+
+/**
+ * 立即发送一条测试提醒：让家长当场验证推送通道。
+ * 用开始提醒模板（与每日精选共用额度池），落点 pages/daily/daily。
+ * 业务失败统一 200 + { ok:false, errcode, msg }：errcode 为 'NO_OPENID' / 'NO_QUOTA' /
+ * 'NETWORK' 或微信原始数字 errcode，前端原样展示便于排查。
+ */
+router.post('/test', async (req, res) => {
+  const { accountId, code } = req.body || {};
+  if (!accountId) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
+  try {
+    // 带 code 时顺带刷新 openid 落库（与 subscribe/sync 同口径，失败不阻断）
+    if (code) {
+      try {
+        const openid = await wxapi.code2session(code);
+        await db.touchReminderOpenid(accountId, openid, TEMPLATE_IDS);
+      } catch (e) {
+        console.warn('[REMINDER] test code2session 失败（忽略）:', e.message);
+      }
+    }
+    const sub = await db.getReminderSub(accountId, TEMPLATES.start);
+    if (!sub || !sub.open_id) {
+      return res.json({ ok: false, errcode: 'NO_OPENID', msg: '还没有你的微信记录，请先打开任意一个提醒开关并完成授权' });
+    }
+    if (sub.quota <= 0) {
+      return res.json({ ok: false, errcode: 'NO_QUOTA', msg: '开始提醒的订阅额度已用完，请重新打开开关授权一次' });
+    }
+    const now = shanghaiNowText();
+    let resp;
+    try {
+      resp = await wxapi.sendSubscribeMessage({
+        openid: sub.open_id,
+        templateId: TEMPLATES.start,
+        data: buildTestData(now.text),
+        page: 'pages/daily/daily'
+      });
+    } catch (e) {
+      return res.json({ ok: false, errcode: 'NETWORK', msg: '发送请求失败：' + e.message });
+    }
+    if (resp.errcode === 0) {
+      await db.decReminderQuota(accountId, TEMPLATES.start);
+      await db.addSentLog(accountId, 'test', now.date);
+      const after = await db.getReminderSub(accountId, TEMPLATES.start);
+      console.log('[REMINDER] 测试提醒已发送:', accountId);
+      return res.json({ ok: true, quota: after ? after.quota : 0 });
+    }
+    if (resp.errcode === 43101) {
+      // 用户未订阅/拒收：与调度层同口径，本地额度归零对齐
+      await db.setReminderQuota(accountId, TEMPLATES.start, 0);
+      return res.json({ ok: false, errcode: 43101, msg: '微信提示未订阅或已拒收（43101），本地额度已清零，请重新授权一次' });
+    }
+    return res.json({ ok: false, errcode: resp.errcode, msg: '微信发送失败（' + resp.errcode + '）：' + (resp.errmsg || '未知错误') });
+  } catch (err) {
+    console.error('[REMINDER] test error:', err.message);
+    res.status(500).json({ ok: false, msg: '发送失败，请稍后再试' });
   }
 });
 

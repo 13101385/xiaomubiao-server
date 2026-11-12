@@ -37,7 +37,9 @@ function createTables() {
     // 订阅消息提醒：窄同步的任务镜像（仅提醒所需字段：孩子名/任务名/日期/起止时间/状态）
     'CREATE TABLE IF NOT EXISTS reminder_tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, account_id TEXT NOT NULL, task_key TEXT NOT NULL, child_name TEXT DEFAULT \'\', task_name TEXT DEFAULT \'\', date TEXT NOT NULL, start_time TEXT DEFAULT \'\', end_time TEXT DEFAULT \'\', status TEXT DEFAULT \'\', reminded_start INTEGER DEFAULT 0, updated_at INTEGER NOT NULL, UNIQUE(account_id, date, task_key))',
     // 订阅消息提醒：发送流水（防重复：如未完成提醒每账号每天最多一条）
-    'CREATE TABLE IF NOT EXISTS reminder_sent_log (account_id TEXT NOT NULL, kind TEXT NOT NULL, day TEXT NOT NULL, sent_at INTEGER NOT NULL, PRIMARY KEY(account_id, kind, day))'
+    'CREATE TABLE IF NOT EXISTS reminder_sent_log (account_id TEXT NOT NULL, kind TEXT NOT NULL, day TEXT NOT NULL, sent_at INTEGER NOT NULL, PRIMARY KEY(account_id, kind, day))',
+    // 订阅消息提醒：每日精选的今日卡钩子镜像 + 开关（按账号+日期一行，早间推送引用）
+    'CREATE TABLE IF NOT EXISTS reminder_daily_hooks (account_id TEXT NOT NULL, date TEXT NOT NULL, topic_q TEXT DEFAULT \'\', science_title TEXT DEFAULT \'\', band TEXT DEFAULT \'\', daily_push INTEGER DEFAULT 0, updated_at INTEGER NOT NULL, PRIMARY KEY(account_id, date))'
   ];
   
   const indexes = [
@@ -758,11 +760,48 @@ function addSentLog(accountId, kind, day) {
   });
 }
 
+/**
+ * 保存某日的今日卡钩子与每日精选开关（按账号+日期覆盖）
+ * @param {{topicQ?: string, scienceTitle?: string, band?: string}} hook
+ */
+function replaceReminderDailyHook(accountId, date, hook, dailyPush) {
+  const h = hook || {};
+  return new Promise((resolve, reject) => {
+    db.run(
+      `INSERT INTO reminder_daily_hooks (account_id, date, topic_q, science_title, band, daily_push, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(account_id, date) DO UPDATE SET
+         topic_q = excluded.topic_q, science_title = excluded.science_title,
+         band = excluded.band, daily_push = excluded.daily_push, updated_at = excluded.updated_at`,
+      [accountId, date,
+        String(h.topicQ || '').slice(0, 100), String(h.scienceTitle || '').slice(0, 100),
+        String(h.band || '').slice(0, 10), dailyPush ? 1 : 0, Date.now()],
+      (err) => (err ? reject(err) : resolve(true))
+    );
+  });
+}
+
+/** 某日开启了每日精选且同步了话题钩子的账号（早间推送目标） */
+function listDailyPushTargets(date) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      "SELECT * FROM reminder_daily_hooks WHERE date = ? AND daily_push = 1 AND topic_q != ''",
+      [date],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      }
+    );
+  });
+}
+
 /** 清理过期镜像与流水（保留近 7 天流水防重复即可） */
 function cleanupReminderData(beforeDate, beforeDay) {
   return new Promise((resolve) => {
     db.run('DELETE FROM reminder_tasks WHERE date < ?', [beforeDate], () => {
-      db.run('DELETE FROM reminder_sent_log WHERE day < ?', [beforeDay], () => resolve(true));
+      db.run('DELETE FROM reminder_daily_hooks WHERE date < ?', [beforeDate], () => {
+        db.run('DELETE FROM reminder_sent_log WHERE day < ?', [beforeDay], () => resolve(true));
+      });
     });
   });
 }
@@ -797,6 +836,7 @@ function deleteAccountData(accountId) {
         db.run('DELETE FROM reminder_subs WHERE account_id = ?', [accountId]);
         db.run('DELETE FROM reminder_tasks WHERE account_id = ?', [accountId]);
         db.run('DELETE FROM reminder_sent_log WHERE account_id = ?', [accountId]);
+        db.run('DELETE FROM reminder_daily_hooks WHERE account_id = ?', [accountId]);
         db.run('DELETE FROM parent_records WHERE account_id = ?', [accountId], (e2) => {
           if (e2) return finish(e2);
           if (!keys.length) return finish();
@@ -821,5 +861,6 @@ module.exports = {
   addReminderQuota, touchReminderOpenid, getReminderSub, listReminderSubs,
   decReminderQuota, setReminderQuota,
   replaceReminderDayTasks, listStartCandidates, markTaskReminded, listUnfinishedByAccount,
+  replaceReminderDailyHook, listDailyPushTargets,
   hasSentLog, addSentLog, cleanupReminderData
 };

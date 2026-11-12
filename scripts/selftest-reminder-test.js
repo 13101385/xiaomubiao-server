@@ -69,8 +69,8 @@ assert(call.templateId === TEMPLATES.start, '用开始提醒（备忘录）模�
 assert(call.page === 'pages/daily/daily', '落点页为 pages/daily/daily');
 assert(call.openid === 'openid_a', 'openid 正确');
 assert(call.data.thing1.value === '测试提醒：通道已打通', '标题文案正确');
-assert(call.data.thing3.value === '明早 7:30 你会收到今日精选', '温馨提示文案正确');
-assert(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(call.data.time2.value), '时间为当前时间格式');
+assert(call.data.thing4.value === '明早 7:30 你会收到亲子读物', '温馨提示文案正确');
+assert(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(call.data.time3.value), '时间为当前时间格式');
 let sub = await db.getReminderSub('acc_a', TEMPLATES.start);
 assert(sub.quota === 1, '成功后额度 2 → 1（扣 1 条）');
 assert(r.quota === 1, '响应带回剩余额度 1');

@@ -11,6 +11,21 @@ const { config } = require('../config');
 const db = require('../db');
 const path = require('path');
 const PDFDocument = require('pdfkit');
+/* 服务端合成引擎懒加载：canvas 是原生模块，若部署环境缺原生库/字体，
+ * 只让生图接口报错，绝不拖垮整个服务启动 */
+let _compose = null;
+function loadCompose() {
+  if (_compose === null) {
+    try {
+      _compose = require('../poster-render/compose');
+    } catch (e) {
+      console.error('[POSTER] 合成引擎加载失败:', e.message);
+      _compose = false;
+    }
+  }
+  if (!_compose) throw new Error('服务端合成引擎不可用，请稍后重试');
+  return _compose;
+}
 
 const DAILY_LIMIT = 200; // 每账号每日 AI 文字生成上限（防 API 费用失控）
 const MAX_CUSTOM_LEN = 1200; // 自定义要求最大字数（refine 产物约 400-700 字，放宽到 1200）
@@ -150,7 +165,7 @@ ${customText}
 }
 
 【要求】
-- sections 至少 4 个板块，内容具体、紧扣「${theme}」主题
+- sections 4~6 个板块，内容具体、紧扣「${theme}」主题
 - 每个板块的 content 控制在 60~120 字，bullets 2~5 条
 - colorScheme 三个颜色都必须是 #RRGGBB 格式
 - title 控制在 12 个字以内`;
@@ -292,21 +307,59 @@ router.post('/generate-image', async (req, res) => {
   if (String(custom).length > MAX_CUSTOM_LEN) return res.status(400).json({ ok: false, msg: '自定义要求过长（最多' + MAX_CUSTOM_LEN + '字）' });
   if (String(style).length > MAX_STYLE_LEN) return res.status(400).json({ ok: false, msg: '风格描述过长' });
 
+  const mode = (req.body && req.body.mode) || '';
+
   try {
-    const prompt = buildImagePrompt(req.body);
-    // 插画模式可指定横幅尺寸（默认竖版 1024x1536）
-    const imgSize = req.body && req.body.size === 'landscape' ? '1536x1024'
-      : (req.body && req.body.size === 'square' ? '1024x1024' : '');
-    // 生图同时顺带生成文字方案（用于 PDF 排版填充真实文字）；插画模式跳过文字方案
-    const [url, plan] = await Promise.all([
-      callAgnesImage(prompt, imgSize),
-      req.body && (req.body.mode === 'illustration' || req.body.mode === 'full')
-        ? Promise.resolve(null)
-        : callAgnes(buildPrompt(req.body)).catch((e) => {
-            console.warn('[POSTER] 生图伴随文字方案生成失败(降级纯图):', e.message);
-            return null;
-          })
+    /* ===== illustration / full 模式：保持旧行为（素材生图 / AI 整图直出） ===== */
+    if (mode === 'illustration' || mode === 'full') {
+      const prompt = buildImagePrompt(req.body);
+      const imgSize = req.body.size === 'landscape' ? '1536x1024'
+        : (req.body.size === 'square' ? '1024x1024' : '');
+      const url = await callAgnesImage(prompt, imgSize);
+      const record = {
+        id: 'poster_' + crypto.randomBytes(8).toString('hex'),
+        accountId,
+        openId,
+        theme: String(theme).trim(),
+        grade,
+        title: String(theme).trim() + '手抄报图片',
+        source: 'image',
+        config: JSON.stringify({ theme, grade, style, custom }),
+        content: JSON.stringify({ theme, grade, style, custom, prompt, hasPlan: false }),
+        imageUrl: url,
+        createdAt: Date.now()
+      };
+      await db.createPoster(record);
+      return res.json({ ok: true, posterId: record.id });
+    }
+
+    /* ===== 默认（自由生图）：方案 + 无文字场景插画 → 服务端合成完整成品 =====
+     * 旧链路交付的是「3 个空框的空白模板图」，文字只在方案里、板块数还对不上框数。
+     * 新链路：插画只作顶部主视觉，标题与全部板块由服务端排版引擎合成进图，
+     * 合成图（composed_url）即正式交付，详情/封面/PDF/保存统一使用。 */
+    const { composePosterImage, storeComposedImage } = loadCompose(); // 引擎不可用时先行报错，不浪费 AI 调用
+    const heroScene = String(custom).trim()
+      ? String(custom).trim()
+      : (String(theme).trim() + '主题的欢乐卡通场景：卡通小朋友参与其中，场景饱满、色彩鲜艳、细节丰富');
+    const heroPrompt = buildImagePrompt(Object.assign({}, req.body, { mode: 'illustration', custom: heroScene }));
+    const planPrompt = buildPrompt(req.body);
+
+    const [url, planFirst] = await Promise.all([
+      callAgnesImage(heroPrompt, '1536x1024'),
+      callAgnes(planPrompt).catch((e) => {
+        console.warn('[POSTER] 文字方案生成失败，将重试一次:', e.message);
+        return null;
+      })
     ]);
+    // 方案是合成的必需品：重试一次仍失败就报错，绝不交付无字半成品
+    const plan = planFirst || await callAgnes(planPrompt);
+    if (!plan || !Array.isArray(plan.sections) || plan.sections.length < 1) {
+      throw new Error('AI 返回的方案缺少板块');
+    }
+
+    const heroResp = await axios.get(url, { responseType: 'arraybuffer', timeout: 30000 });
+    const heroBuf = Buffer.from(heroResp.data || []);
+    if (heroBuf.length < 100) throw new Error('插画下载失败，请重试');
 
     const record = {
       id: 'poster_' + crypto.randomBytes(8).toString('hex'),
@@ -314,19 +367,29 @@ router.post('/generate-image', async (req, res) => {
       openId,
       theme: String(theme).trim(),
       grade,
-      title: (plan && plan.title) || (String(theme).trim() + '手抄报图片'),
+      title: plan.title || (String(theme).trim() + '手抄报'),
       source: 'image',
       config: JSON.stringify({ theme, grade, style, custom }),
-      content: JSON.stringify(Object.assign({}, plan || {}, {
-        theme, grade, style, custom, prompt,
-        hasPlan: !!plan
+      content: JSON.stringify(Object.assign({}, plan, {
+        theme, grade, style, custom, prompt: heroPrompt,
+        hasPlan: true, composed: true
       })),
       imageUrl: url,
       createdAt: Date.now()
     };
     await db.createPoster(record);
 
-    res.json({ ok: true, posterId: record.id });
+    try {
+      const { buffer, meta } = await composePosterImage({ plan, hero: heroBuf, theme: record.theme });
+      const composedUrl = await storeComposedImage(db, record.id, accountId, buffer);
+      console.log('[POSTER] 服务端合成完成:', record.id, JSON.stringify(meta));
+      return res.json({ ok: true, posterId: record.id, composedUrl });
+    } catch (composeErr) {
+      // 合成失败不留半成品记录，避免用户拿到无字图
+      console.error('[POSTER] 服务端合成失败，删除记录:', composeErr.message);
+      await db.deletePoster(record.id, accountId).catch(() => {});
+      throw new Error('手抄报合成失败，请重试');
+    }
   } catch (err) {
     console.error('[POSTER] generate-image error:', err.message);
     if (err.message && err.message.indexOf('AGNES') > -1) {
@@ -489,6 +552,21 @@ router.get('/library', async (req, res) => {
 });
 
 /**
+ * 读取记录的合成成品图（库内 blob）；无成品或数据无效返回 null
+ * composed_url 形如 /api/poster/composed/poster_xxx.jpg
+ */
+async function loadComposedBuffer(row) {
+  const url = row && (row.composedUrl || row.composed_url);
+  if (!url) return null;
+  const name = String(url).split('/').pop();
+  if (!/^poster_[a-z0-9]+\.(png|jpg)$/i.test(name)) return null;
+  const data = await db.getBlob('composed/' + name);
+  if (!data) return null;
+  const buf = Buffer.from(data, 'base64');
+  return buf.length >= 100 ? buf : null;
+}
+
+/**
  * GET /api/poster/composed/:name
  * 返回数据库中存储的成品图（持久卷，重启不丢）
  */
@@ -632,7 +710,17 @@ router.get('/:id/cover', async (req, res) => {
   if (!accountId) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
   try {
     const row = await db.getPoster(req.params.id, accountId);
-    if (!row || !row.imageUrl) return res.status(404).json({ ok: false, msg: '图片不存在' });
+    if (!row) return res.status(404).json({ ok: false, msg: '图片不存在' });
+    // 正式交付是合成成品图：有 composed 就直接发库内成品（详情保存相册走本接口）
+    const composedBuf = await loadComposedBuffer(row);
+    if (composedBuf) {
+      let mime = 'image/png';
+      if (composedBuf[0] === 0xFF && composedBuf[1] === 0xD8) mime = 'image/jpeg';
+      res.setHeader('Content-Type', mime);
+      res.setHeader('Content-Length', composedBuf.length);
+      return res.send(composedBuf);
+    }
+    if (!row.imageUrl) return res.status(404).json({ ok: false, msg: '图片不存在' });
     const resp = await axios.get(row.imageUrl, { responseType: 'arraybuffer', timeout: 20000 });
     const buf = Buffer.from(resp.data || []);
     if (buf.length < 100) return res.status(500).json({ ok: false, msg: '图片数据无效' });
@@ -1052,17 +1140,22 @@ router.get('/:id/pdf', async (req, res) => {
 
     /* ==================== 图片版：成品图直接嵌入单页 ==================== */
     if (row.source === 'image') {
-      if (!row.imageUrl) {
-        return res.status(500).json({ ok: false, msg: '该手抄报缺少图片地址，无法导出 PDF' });
-      }
-      // 下载成品图（15s 超时），失败返回友好错误
+      // 优先用库内合成成品图（文字已在图上）：此时整页即成品，不再叠字
+      const composedBuf = await loadComposedBuffer(row).catch(() => null);
       let imageBuffer;
-      try {
-        const resp = await axios.get(row.imageUrl, { responseType: 'arraybuffer', timeout: 15000 });
-        imageBuffer = Buffer.from(resp.data || []);
-      } catch (err) {
-        console.error('[POSTER] pdf 图片下载失败:', err.message);
-        return res.status(500).json({ ok: false, msg: '手抄报图片下载失败，请稍后重试' });
+      if (composedBuf) {
+        imageBuffer = composedBuf;
+      } else if (!row.imageUrl) {
+        return res.status(500).json({ ok: false, msg: '该手抄报缺少图片地址，无法导出 PDF' });
+      } else {
+        // 下载成品图（15s 超时），失败返回友好错误
+        try {
+          const resp = await axios.get(row.imageUrl, { responseType: 'arraybuffer', timeout: 15000 });
+          imageBuffer = Buffer.from(resp.data || []);
+        } catch (err) {
+          console.error('[POSTER] pdf 图片下载失败:', err.message);
+          return res.status(500).json({ ok: false, msg: '手抄报图片下载失败，请稍后重试' });
+        }
       }
       // 校验图片签名（png/jpeg/webp），避免把 HTML 错误页当图片嵌入
       const sigOk = imageBuffer.length > 12 &&
@@ -1100,7 +1193,7 @@ router.get('/:id/pdf', async (req, res) => {
       const accentColor = pickColor(planContent.colorScheme && planContent.colorScheme.accent, FALLBACK_COLORS.accent);
       doc.font(CHINESE_FONT);
 
-      if (sections.length > 0 || planContent.title) {
+      if (!composedBuf && (sections.length > 0 || planContent.title)) {
         // 整页半透明白纱：插画隐约可见当背景，叠字后打印清晰
         doc.fillOpacity(0.5).fillColor('#FFFFFF');
         doc.rect(0, 0, pageW, pageH).fill();

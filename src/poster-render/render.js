@@ -18,16 +18,17 @@ const H = 1754;
 const FONT = '"Noto Sans CJK SC"';
 const EMOJI_FONT = '"Noto Color Emoji"';
 // 运行时：emoji 素材复用成品库工具目录（随仓库一同部署），可用环境变量覆盖
-const EMOJI_DIR = process.env.POSTER_EMOJI_DIR || path.join(__dirname, '..', '..', 'scripts', 'poster-library', 'assets', 'emoji');
+// 素材目录/文件名口径统一收敛到 emoji-assets（提示词选图约束与解析净化共用同一清单）
+const { EMOJI_DIR, emojiFileName } = require('./emoji-assets');
 
 /* ============ emoji：本地 Twemoji SVG 全彩渲染 ============
  * 注意：node-canvas 对系统 Noto Color Emoji 只能渲染单色剪影（随 fillStyle 染色），
  * 因此改用本地 SVG 素材（assets/emoji/<codepoint>.svg），注入宽高后 loadImage 全彩绘制。
- * 素材缺失时回退为单色剪影（显式指定颜色，不再随上下文乱染色）。 */
+ * 素材缺失时：装饰位（drawEmoji）回退为单色剪影（显式指定颜色，不再随上下文乱染色，
+ * 且生产字体缺失时可能画成码点文字，故装饰位图标应由上层净化保证有素材）；
+ * 板块角标位（drawBadgeIcon）回退为序号徽章——角标有明确序号语义，数字永远体面，
+ * 绝不出现码点文字或空白。 */
 const emojiCache = new Map();
-function emojiFileName(e) {
-  return [...e].map(c => c.codePointAt(0).toString(16)).filter(h => h !== 'fe0f').join('-');
-}
 async function preloadEmojis(list) {
   for (const e of list) {
     if (!e || emojiCache.has(e)) continue;
@@ -224,6 +225,28 @@ function drawEmoji(ctx, emoji, cx, cy, size, fallbackColor) {
   ctx.restore();
 }
 
+/**
+ * 板块角标专用绘制：有素材画全彩图标；素材缺失时画「板块序号」数字。
+ * 角标本来就坐在圆形徽章/标题条上，序号与版式同语义同配色，是唯一体面的缺图兜底——
+ * 绝不走 drawEmoji 的字体回退（生产环境会画出 01F525 这类码点文字，像报错）。
+ * @param {number} index 板块下标（0 起，显示为 index+1）
+ * @param {string} color 序号颜色（与该角标位的图标回退色一致：徽章内白色、浅底主色深调）
+ */
+function drawBadgeIcon(ctx, emoji, index, cx, cy, size, color) {
+  const img = emoji ? emojiCache.get(emoji) : null;
+  if (img) {
+    ctx.drawImage(img, cx - size / 2, cy - size / 2, size, size);
+    return;
+  }
+  ctx.save();
+  setFont(ctx, Math.round(size * 0.92), true);
+  ctx.fillStyle = color || '#FFFFFF';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(String((index || 0) + 1), cx, cy + size * 0.04);
+  ctx.restore();
+}
+
 /** 直引号 → 中文引号（仅展示层规范化，不改模板数据） */
 function Q(s) {
   let open = true;
@@ -362,7 +385,7 @@ function layoutBanner(ctx, tpl, pal, variant) {
     ctx.fillStyle = '#FFFFFF';
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     ctx.fillText(Q(sec.title || ''), cx + 92, cy + 16 + chipH / 2 + 2);
-    drawEmoji(ctx, sec.icon, cx + 56, cy + 16 + chipH / 2, 46, '#FFFFFF');
+    drawBadgeIcon(ctx, sec.icon, i, cx + 56, cy + 16 + chipH / 2, 46, '#FFFFFF');
     // 正文
     const r = drawSectionBody(ctx, sec, cx + padX, cy + chipH + 40, innerW, fit.px, pal, innerH);
     droppedTotal += r.dropped;
@@ -440,7 +463,7 @@ function layoutRibbon(ctx, tpl, pal, variant) {
     ctx.fillStyle = pal.mainDeep;
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     ctx.fillText(Q(sec.title || ''), cx + 96, cy + 52);
-    drawEmoji(ctx, sec.icon, cx + 58, cy + 52, 48, pal.mainDeep);
+    drawBadgeIcon(ctx, sec.icon, i, cx + 58, cy + 52, 48, pal.mainDeep);
     ctx.fillStyle = barColor;
     ctx.fillRect(cx + padX, cy + headH - 6, 72, 6);
     // 正文
@@ -512,7 +535,7 @@ function layoutPaper(ctx, tpl, pal, variant) {
     ctx.fillStyle = pal.mainDeep;
     ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
     ctx.fillText(Q(sec.title || ''), sx + 72, sy + 30);
-    drawEmoji(ctx, sec.icon, sx + 34, sy + 30, 48, pal.mainDeep);
+    drawBadgeIcon(ctx, sec.icon, i, sx + 34, sy + 30, 48, pal.mainDeep);
     ctx.fillStyle = i % 2 === 0 ? pal.main : pal.accent;
     roundRect(ctx, sx + 74, sy + headH - 12, 84, 8, 4); ctx.fill();
     const r = drawSectionBody(ctx, sec, sx + 4, sy + headH + 8, colW - 8, fit.px, pal, innerH);
@@ -605,6 +628,6 @@ module.exports = {
   // 以下供 render-v2 复用（同一套度量/禁则/对比度逻辑，避免双份实现漂移）
   wrapText, measureSection, fitBodySize, drawSectionBody,
   deepEnough, lightEnough, mix, hexToRgb, luminance,
-  roundRect, drawEmoji, drawMotif, star, flower, dots, Q, setFont,
+  roundRect, drawEmoji, drawBadgeIcon, drawMotif, star, flower, dots, Q, setFont,
   INK, SUBINK, FONT
 };

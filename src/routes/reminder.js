@@ -4,7 +4,9 @@
  *   reminder_tasks（孩子名/任务名/日期/起止时间/状态）+ reminder_subs（openid 与订阅额度）
  *
  * POST /api/reminder/subscribe  登记额度：用户每次授权订阅成功后前端调用一次，quota +1
- * POST /api/reminder/sync       同步今天+明天的任务窄字段（按 accountId+date 覆盖）
+ * POST /api/reminder/sync       同步今天+明天的任务窄字段（按 accountId+date 覆盖）；
+ *                                另接受顶层 dailyPush（每日精选开关）与每日 hook（今日卡钩子：
+ *                                亲子话题问题/科普标题/年龄档），供早间每日精选推送引用
  * POST /api/reminder/status     查询两模板剩余额度（设置页展示）
  *
  * openid 来源：请求可带 wx.login 的 code，后端 code2session 换取并落库；
@@ -58,6 +60,7 @@ router.post('/subscribe', async (req, res) => {
 
 router.post('/sync', async (req, res) => {
   const { accountId, code, days } = req.body || {};
+  const dailyPush = !!(req.body || {}).dailyPush;
   if (!accountId) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
   if (!Array.isArray(days) || days.length === 0 || days.length > 7) {
     return res.status(400).json({ ok: false, msg: '缺少同步数据' });
@@ -86,6 +89,14 @@ router.post('/sync', async (req, res) => {
           status: String(t.status || '')
         }));
       await db.replaceReminderDayTasks(accountId, String(day.date), clean);
+      // 今日卡钩子（每日精选早间推送引用）：字段做长度/枚举校验后按日覆盖保存
+      if (day.hook && typeof day.hook === 'object') {
+        await db.replaceReminderDailyHook(accountId, String(day.date), {
+          topicQ: String(day.hook.topicQ || '').slice(0, 100),
+          scienceTitle: String(day.hook.scienceTitle || '').slice(0, 100),
+          band: (day.hook.band === 'low' || day.hook.band === 'high') ? day.hook.band : ''
+        }, dailyPush);
+      }
     }
     res.json({ ok: true });
   } catch (err) {

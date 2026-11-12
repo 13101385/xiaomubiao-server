@@ -31,7 +31,13 @@ function createTables() {
     'CREATE TABLE IF NOT EXISTS sms_codes (phone TEXT NOT NULL, code TEXT NOT NULL, expires_at INTEGER NOT NULL, used INTEGER DEFAULT 0, created_at INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS exams (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, open_id TEXT DEFAULT \'\', subject TEXT NOT NULL, grade TEXT NOT NULL, title TEXT NOT NULL, config TEXT NOT NULL, content TEXT NOT NULL, created_at INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS posters (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, open_id TEXT DEFAULT \'\', theme TEXT NOT NULL, grade TEXT NOT NULL, title TEXT NOT NULL, source TEXT NOT NULL, config TEXT NOT NULL, content TEXT NOT NULL, image_url TEXT DEFAULT \'\', composed_url TEXT DEFAULT \'\', created_at INTEGER NOT NULL)',
-    'CREATE TABLE IF NOT EXISTS poster_blobs (key TEXT PRIMARY KEY, data TEXT NOT NULL, created_at INTEGER NOT NULL)'
+    'CREATE TABLE IF NOT EXISTS poster_blobs (key TEXT PRIMARY KEY, data TEXT NOT NULL, created_at INTEGER NOT NULL)',
+    // 订阅消息提醒：额度表（每账号每模板一行，quota 为微信一次性订阅的剩余可发送条数）
+    'CREATE TABLE IF NOT EXISTS reminder_subs (account_id TEXT NOT NULL, template_id TEXT NOT NULL, open_id TEXT DEFAULT \'\', quota INTEGER DEFAULT 0, updated_at INTEGER NOT NULL, PRIMARY KEY(account_id, template_id))',
+    // 订阅消息提醒：窄同步的任务镜像（仅提醒所需字段：孩子名/任务名/日期/起止时间/状态）
+    'CREATE TABLE IF NOT EXISTS reminder_tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, account_id TEXT NOT NULL, task_key TEXT NOT NULL, child_name TEXT DEFAULT \'\', task_name TEXT DEFAULT \'\', date TEXT NOT NULL, start_time TEXT DEFAULT \'\', end_time TEXT DEFAULT \'\', status TEXT DEFAULT \'\', reminded_start INTEGER DEFAULT 0, updated_at INTEGER NOT NULL, UNIQUE(account_id, date, task_key))',
+    // 订阅消息提醒：发送流水（防重复：如未完成提醒每账号每天最多一条）
+    'CREATE TABLE IF NOT EXISTS reminder_sent_log (account_id TEXT NOT NULL, kind TEXT NOT NULL, day TEXT NOT NULL, sent_at INTEGER NOT NULL, PRIMARY KEY(account_id, kind, day))'
   ];
   
   const indexes = [
@@ -40,7 +46,9 @@ function createTables() {
     'CREATE INDEX IF NOT EXISTS idx_sms_codes_phone ON sms_codes(phone)',
     'CREATE INDEX IF NOT EXISTS idx_sms_codes_expires ON sms_codes(expires_at)',
     'CREATE INDEX IF NOT EXISTS idx_exams_account ON exams(account_id)',
-    'CREATE INDEX IF NOT EXISTS idx_posters_account ON posters(account_id)'
+    'CREATE INDEX IF NOT EXISTS idx_posters_account ON posters(account_id)',
+    'CREATE INDEX IF NOT EXISTS idx_reminder_tasks_scan ON reminder_tasks(date, status, reminded_start)',
+    'CREATE INDEX IF NOT EXISTS idx_reminder_tasks_account ON reminder_tasks(account_id, date)'
   ];
   
   return new Promise((resolve, reject) => {
@@ -537,6 +545,228 @@ function countImagesToday(accountId, startOfDay) {
   });
 }
 
+/* ==================== 订阅消息提醒（reminder） ==================== */
+
+/**
+ * 登记一次订阅额度（+1）；openId 非空时同步更新该账号所有模板行的 open_id
+ */
+function addReminderQuota(accountId, templateId, openId) {
+  const now = Date.now();
+  return new Promise((resolve, reject) => {
+    db.run(
+      `INSERT INTO reminder_subs (account_id, template_id, open_id, quota, updated_at)
+       VALUES (?, ?, ?, 1, ?)
+       ON CONFLICT(account_id, template_id) DO UPDATE SET
+         quota = quota + 1,
+         open_id = CASE WHEN excluded.open_id != '' THEN excluded.open_id ELSE open_id END,
+         updated_at = excluded.updated_at`,
+      [accountId, templateId, openId || '', now],
+      (err) => {
+        if (err) return reject(err);
+        if (openId) {
+          db.run('UPDATE reminder_subs SET open_id = ? WHERE account_id = ?', [openId, accountId], () => {});
+        }
+        getReminderSub(accountId, templateId).then(resolve).catch(reject);
+      }
+    );
+  });
+}
+
+/**
+ * 记录账号 open_id（同步任务时带 code 换得）：为已知模板建占位行（quota 0），并刷新 open_id
+ */
+function touchReminderOpenid(accountId, openId, templateIds) {
+  const now = Date.now();
+  return new Promise((resolve, reject) => {
+    db.serialize(() => {
+      (templateIds || []).forEach(tid => {
+        db.run(
+          `INSERT OR IGNORE INTO reminder_subs (account_id, template_id, open_id, quota, updated_at)
+           VALUES (?, ?, ?, 0, ?)`,
+          [accountId, tid, openId, now]
+        );
+      });
+      db.run(
+        'UPDATE reminder_subs SET open_id = ?, updated_at = ? WHERE account_id = ?',
+        [openId, now, accountId],
+        (err) => (err ? reject(err) : resolve(true))
+      );
+    });
+  });
+}
+
+function getReminderSub(accountId, templateId) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      'SELECT * FROM reminder_subs WHERE account_id = ? AND template_id = ?',
+      [accountId, templateId],
+      (err, row) => {
+        if (err) reject(err);
+        else resolve(row || null);
+      }
+    );
+  });
+}
+
+function listReminderSubs(accountId) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      'SELECT * FROM reminder_subs WHERE account_id = ?',
+      [accountId],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      }
+    );
+  });
+}
+
+/** 原子扣减额度：quota>0 才扣，返回是否扣成功 */
+function decReminderQuota(accountId, templateId) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'UPDATE reminder_subs SET quota = quota - 1, updated_at = ? WHERE account_id = ? AND template_id = ? AND quota > 0',
+      [Date.now(), accountId, templateId],
+      function (err) {
+        if (err) reject(err);
+        else resolve(this.changes > 0);
+      }
+    );
+  });
+}
+
+/** 强制设置额度（如微信返回 43101 用户未订阅/额度不一致时归零对齐） */
+function setReminderQuota(accountId, templateId, quota) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'UPDATE reminder_subs SET quota = ?, updated_at = ? WHERE account_id = ? AND template_id = ?',
+      [quota, Date.now(), accountId, templateId],
+      (err) => (err ? reject(err) : resolve(true))
+    );
+  });
+}
+
+/**
+ * 按账号+日期覆盖同步任务镜像；同 task_key 已发过开始提醒的，保留 reminded_start 防止重复推送
+ * @param {Array<{taskKey, childName, taskName, startTime, endTime, status}>} tasks
+ */
+function replaceReminderDayTasks(accountId, date, tasks) {
+  const now = Date.now();
+  return new Promise((resolve, reject) => {
+    db.all(
+      'SELECT task_key, reminded_start FROM reminder_tasks WHERE account_id = ? AND date = ?',
+      [accountId, date],
+      (err, rows) => {
+        if (err) return reject(err);
+        const reminded = {};
+        (rows || []).forEach(r => { if (r.reminded_start) reminded[r.task_key] = 1; });
+        db.serialize(() => {
+          db.run('DELETE FROM reminder_tasks WHERE account_id = ? AND date = ?', [accountId, date]);
+          const stmt = db.prepare(
+            `INSERT INTO reminder_tasks
+               (account_id, task_key, child_name, task_name, date, start_time, end_time, status, reminded_start, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          );
+          (tasks || []).forEach(t => {
+            stmt.run([
+              accountId, String(t.taskKey || ''), String(t.childName || '').slice(0, 50),
+              String(t.taskName || '').slice(0, 100), date,
+              String(t.startTime || ''), String(t.endTime || ''), String(t.status || ''),
+              reminded[String(t.taskKey || '')] ? 1 : 0, now
+            ]);
+          });
+          stmt.finalize((e) => (e ? reject(e) : resolve(true)));
+        });
+      }
+    );
+  });
+}
+
+/** 开始提醒候选：某日未开始（todo）且未提醒过的任务 */
+function listStartCandidates(date) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      "SELECT * FROM reminder_tasks WHERE date = ? AND status = 'todo' AND reminded_start = 0 AND start_time != '' ORDER BY start_time ASC",
+      [date],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      }
+    );
+  });
+}
+
+function markTaskReminded(id) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'UPDATE reminder_tasks SET reminded_start = 1, updated_at = ? WHERE id = ?',
+      [Date.now(), id],
+      (err) => (err ? reject(err) : resolve(true))
+    );
+  });
+}
+
+/**
+ * 未完成提醒汇总：某日仍有未完成（todo/doing）任务的账号
+ * 返回 [{ account_id, n, first_name, first_child }]，first 为开始时间最早的一条
+ */
+function listUnfinishedByAccount(date) {
+  return new Promise((resolve, reject) => {
+    db.all(
+      `SELECT account_id,
+              COUNT(*) AS n,
+              (SELECT task_name FROM reminder_tasks t2
+                WHERE t2.account_id = t.account_id AND t2.date = t.date
+                  AND t2.status IN ('todo', 'doing')
+                ORDER BY t2.start_time ASC LIMIT 1) AS first_name,
+              (SELECT child_name FROM reminder_tasks t3
+                WHERE t3.account_id = t.account_id AND t3.date = t.date
+                  AND t3.status IN ('todo', 'doing')
+                ORDER BY t3.start_time ASC LIMIT 1) AS first_child
+       FROM reminder_tasks t
+       WHERE date = ? AND status IN ('todo', 'doing')
+       GROUP BY account_id`,
+      [date],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve(rows || []);
+      }
+    );
+  });
+}
+
+function hasSentLog(accountId, kind, day) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      'SELECT 1 AS x FROM reminder_sent_log WHERE account_id = ? AND kind = ? AND day = ?',
+      [accountId, kind, day],
+      (err, row) => {
+        if (err) reject(err);
+        else resolve(!!row);
+      }
+    );
+  });
+}
+
+function addSentLog(accountId, kind, day) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'INSERT OR IGNORE INTO reminder_sent_log (account_id, kind, day, sent_at) VALUES (?, ?, ?, ?)',
+      [accountId, kind, day, Date.now()],
+      (err) => (err ? reject(err) : resolve(true))
+    );
+  });
+}
+
+/** 清理过期镜像与流水（保留近 7 天流水防重复即可） */
+function cleanupReminderData(beforeDate, beforeDay) {
+  return new Promise((resolve) => {
+    db.run('DELETE FROM reminder_tasks WHERE date < ?', [beforeDate], () => {
+      db.run('DELETE FROM reminder_sent_log WHERE day < ?', [beforeDay], () => resolve(true));
+    });
+  });
+}
+
 function close() {
   return new Promise((resolve, reject) => {
     if (db) {
@@ -564,6 +794,9 @@ function deleteAccountData(accountId) {
         const finish = (e) => (e ? reject(e) : resolve(true));
         db.run('DELETE FROM posters WHERE account_id = ?', [accountId]);
         db.run('DELETE FROM exams WHERE account_id = ?', [accountId]);
+        db.run('DELETE FROM reminder_subs WHERE account_id = ?', [accountId]);
+        db.run('DELETE FROM reminder_tasks WHERE account_id = ?', [accountId]);
+        db.run('DELETE FROM reminder_sent_log WHERE account_id = ?', [accountId]);
         db.run('DELETE FROM parent_records WHERE account_id = ?', [accountId], (e2) => {
           if (e2) return finish(e2);
           if (!keys.length) return finish();
@@ -584,5 +817,9 @@ module.exports = {
   createPoster, listPosters, listLibraryPosters, allPostersForAdmin, getPoster, deletePoster, updatePoster,
   putBlob, getBlob,
   deleteAccountData,
-  countPostersToday, countImagesToday
+  countPostersToday, countImagesToday,
+  addReminderQuota, touchReminderOpenid, getReminderSub, listReminderSubs,
+  decReminderQuota, setReminderQuota,
+  replaceReminderDayTasks, listStartCandidates, markTaskReminded, listUnfinishedByAccount,
+  hasSentLog, addSentLog, cleanupReminderData
 };

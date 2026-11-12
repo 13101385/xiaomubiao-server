@@ -27,6 +27,8 @@ const authRoutes = require('./routes/auth');
 const examRoutes = require('./routes/exam');
 const posterRoutes = require('./routes/poster');
 const chatRoutes = require('./routes/chat');
+const reminderRoutes = require('./routes/reminder');
+const { startReminderScheduler } = require('./reminder-scheduler');
 
 const app = express();
 const PORT = config.port;
@@ -81,6 +83,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/exam', examRoutes);
 app.use('/api/poster', posterRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/reminder', reminderRoutes);
 
 // 错误处理
 app.use((err, req, res, next) => {
@@ -96,6 +99,8 @@ app.use((err, req, res, next) => {
 async function start() {
   try {
     await db.init();
+
+    startReminderScheduler();
 
     app.listen(PORT, () => {
       console.log(`[SERVER] Running on http://localhost:${PORT}`);

@@ -53,10 +53,10 @@ function minOf(hhmm) {
  * - errcode 43101：用户未订阅/拒收，与本地额度不一致 → 本地额度归零对齐，返回 false
  * - 其它错误：不扣额度不标记，下一轮重试，返回 false
  */
-async function sendAndSettle(accountId, templateId, openid, data) {
+async function sendAndSettle(accountId, templateId, openid, data, page) {
   let resp;
   try {
-    resp = await wxapi.sendSubscribeMessage({ openid, templateId, data });
+    resp = await wxapi.sendSubscribeMessage({ openid, templateId, data, page });
   } catch (e) {
     console.warn('[REMINDER] 发送请求失败:', accountId, e.message);
     return false;
@@ -120,7 +120,8 @@ async function scanDailyPush(now) {
     if (!sub || !sub.open_id || sub.quota <= 0) continue;
     const ok = await sendAndSettle(
       h.account_id, TEMPLATES.start, sub.open_id,
-      buildDailyData(h.topic_q, now.date)
+      buildDailyData(h.topic_q, now.date),
+      'pages/daily/daily' // 每日精选落点：今日精选页（开始/未完成提醒不传，仍落首页）
     );
     if (ok) {
       await db.addSentLog(h.account_id, 'daily', now.date);

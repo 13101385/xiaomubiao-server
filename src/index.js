@@ -27,7 +27,7 @@ const authRoutes = require('./routes/auth');
 const examRoutes = require('./routes/exam');
 const posterRoutes = require('./routes/poster');
 const chatRoutes = require('./routes/chat');
-const reminderRoutes = require('./routes/reminder');
+const reminderRoutes = require('./routes/reminder'); const feedbackRoutes = require('./routes/feedback'); const adminRoutes = require('./routes/admin');
 const { startReminderScheduler } = require('./reminder-scheduler');
 
 const app = express();

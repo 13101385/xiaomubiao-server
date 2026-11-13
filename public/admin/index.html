@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>成长趣味 · 管理后台</title>
+<style>
+  :root {
+    --bg: #FAF6F0; --card: #FFFDF9; --line: #EAE0D5;
+    --text: #2D2A26; --sub: #6E6259; --faint: #8A7D6D;
+    --brand: #FF6B35; --brand-dark: #E85A28; --teal: #2EC4B6;
+    --bad: #D9534F; --shadow: 0 2px 10px rgba(120,84,50,.10);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; font-size: 14px; }
+  button { cursor: pointer; font: inherit; }
+  input, select { font: inherit; }
+  .hidden { display: none !important; }
+
+  /* 登录 */
+  #loginView { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .login-card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); padding: 36px 32px; width: 340px; max-width: 100%; }
+  .login-card h1 { font-size: 20px; margin-bottom: 6px; }
+  .login-card p { color: var(--sub); font-size: 13px; margin-bottom: 20px; }
+  .login-card input { width: 100%; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; margin-bottom: 12px; }
+  .btn-primary { width: 100%; padding: 11px; border: none; border-radius: 10px; background: var(--brand); color: #fff; font-weight: 600; }
+  .btn-primary:hover { background: var(--brand-dark); }
+  .err { color: var(--bad); font-size: 13px; min-height: 18px; margin-top: 10px; }
+
+  /* 主框架 */
+  header { background: var(--card); border-bottom: 1px solid var(--line); padding: 12px 20px; display: flex; align-items: center; gap: 14px; position: sticky; top: 0; z-index: 5; }
+  header .title { font-size: 16px; font-weight: 700; }
+  header .spacer { flex: 1; }
+  .btn-ghost { border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 6px 14px; color: var(--sub); }
+  nav { display: flex; gap: 6px; padding: 12px 20px 0; flex-wrap: wrap; }
+  nav button { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 7px 16px; color: var(--sub); }
+  nav button.active { background: var(--brand); border-color: var(--brand); color: #fff; font-weight: 600; }
+  main { padding: 16px 20px 40px; max-width: 1100px; margin: 0 auto; }
+  section { display: none; }
+  section.active { display: block; }
+
+  /* 概览 */
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 18px 16px; }
+  .card .num { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .card .label { color: var(--sub); font-size: 13px; margin-top: 4px; }
+  .note { color: var(--faint); font-size: 12px; margin-top: 12px; line-height: 1.6; }
+
+  /* 表格 */
+  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+  th { color: var(--sub); font-weight: 600; background: #FBF7F1; }
+  tr:last-child td { border-bottom: none; }
+  .avatar { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; background: var(--line); }
+  .pager { display: flex; gap: 8px; align-items: center; margin-top: 12px; color: var(--sub); }
+  .pager button { border: 1px solid var(--line); background: var(--card); border-radius: 8px; padding: 5px 12px; }
+
+  /* 反馈 */
+  .chips { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+  .chips button { border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 5px 13px; color: var(--sub); }
+  .chips button.active { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .fb-item { background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 14px 16px; margin-bottom: 10px; }
+  .fb-item .meta { color: var(--faint); font-size: 12px; margin-bottom: 6px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .fb-item .content { line-height: 1.6; word-break: break-word; }
+  .fb-item .row { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+  .tag { background: #F6F0E7; border-radius: 6px; padding: 1px 8px; font-size: 12px; color: var(--sub); }
+  .fb-item select { border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; background: #fff; }
+
+  /* 手抄报图墙 */
+  .theme-title { font-size: 15px; font-weight: 700; margin: 18px 0 10px; }
+  .theme-title span { color: var(--faint); font-weight: 400; font-size: 12px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  .poster { background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+  .poster img { width: 100%; aspect-ratio: 3/4; object-fit: cover; display: block; background: #F6F0E7; }
+  .poster .p-body { padding: 8px 10px; }
+  .poster .p-title { font-size: 12px; color: var(--sub); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .poster .qa-row { display: flex; gap: 6px; margin-top: 8px; }
+  .poster .qa-row button { flex: 1; border: 1px solid var(--line); background: #fff; border-radius: 7px; padding: 4px 0; font-size: 12px; color: var(--sub); }
+  .poster .qa-row button.on-ok { background: var(--teal); border-color: var(--teal); color: #fff; }
+  .poster .qa-row button.on-bad { background: var(--bad); border-color: var(--bad); color: #fff; }
+
+  /* 系统 */
+  .sys-card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 16px; margin-bottom: 12px; line-height: 1.9; }
+  .sys-card h3 { font-size: 14px; margin-bottom: 6px; }
+  .ok { color: var(--teal); } .no { color: var(--bad); }
+  .empty { color: var(--faint); padding: 30px 0; text-align: center; }
+</style>
+</head>
+<body>
+
+<div id="loginView">
+  <div class="login-card">
+    <h1>成长趣味 · 管理后台</h1>
+    <p>输入管理员口令登录</p>
+    <input id="pwd" type="password" placeholder="管理员口令" autocomplete="current-password">
+    <button class="btn-primary" id="loginBtn">登录</button>
+    <div class="err" id="loginErr"></div>
+  </div>
+</div>
+
+<div id="appView" class="hidden">
+  <header>
+    <div class="title">成长趣味 · 管理后台</div>
+    <div class="spacer"></div>
+    <button class="btn-ghost" id="logoutBtn">退出</button>
+  </header>
+  <nav id="tabs">
+    <button data-tab="overview" class="active">概览</button>
+    <button data-tab="users">用户</button>
+    <button data-tab="feedbacks">反馈</button>
+    <button data-tab="posters">手抄报库</button>
+    <button data-tab="system">系统</button>
+  </nav>
+  <main>
+    <section id="tab-overview" class="active">
+      <div class="cards" id="overviewCards"></div>
+      <div class="note" id="overviewNote"></div>
+    </section>
+    <section id="tab-users">
+      <table>
+        <thead><tr><th>头像</th><th>账号</th><th>昵称</th><th>已注册</th><th>订阅提醒</th><th>注册时间</th></tr></thead>
+        <tbody id="usersBody"></tbody>
+      </table>
+      <div class="pager">
+        <button id="usersPrev">上一页</button>
+        <span id="usersPageInfo"></span>
+        <button id="usersNext">下一页</button>
+      </div>
+    </section>
+    <section id="tab-feedbacks">
+      <div class="chips" id="fbChips">
+        <button data-cat="" class="active">全部</button>
+        <button data-cat="bug">不好用</button>
+        <button data-cat="suggestion">改进建议</button>
+        <button data-cat="feature">想要新功能</button>
+        <button data-cat="other">其他</button>
+      </div>
+      <div id="fbList"></div>
+    </section>
+    <section id="tab-posters">
+      <div id="posterWall"></div>
+    </section>
+    <section id="tab-system">
+      <div id="sysBox"></div>
+    </section>
+  </main>
+</div>
+
+<script>
+(function () {
+  var $ = function (id) { return document.getElementById(id); };
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function fmtTime(ts) {
+    if (!ts) return '-';
+    var d = new Date(ts);
+    var p = function (n) { return String(n).padStart(2, '0'); };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+  function api(path, opts) {
+    return fetch(path, opts || {}).then(function (r) {
+      return r.json().catch(function () { return { ok: false, msg: '响应异常', _status: r.status }; })
+        .then(function (j) { j._status = r.status; return j; });
+    });
+  }
+
+  /* ---------- 登录 ---------- */
+  function showApp() { $('loginView').classList.add('hidden'); $('appView').classList.remove('hidden'); loadOverview(); }
+  function showLogin() { $('appView').classList.add('hidden'); $('loginView').classList.remove('hidden'); }
+  function doLogin() {
+    $('loginErr').textContent = '';
+    api('/api/admin/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: $('pwd').value })
+    }).then(function (r) {
+      if (r.ok) { showApp(); }
+      else if (r._status === 503) { $('loginErr').textContent = '后台尚未配置管理员口令（服务端未设置），请联系维护者。'; }
+      else { $('loginErr').textContent = r.msg || '登录失败'; }
+    });
+  }
+  $('loginBtn').addEventListener('click', doLogin);
+  $('pwd').addEventListener('keydown', function (e) { if (e.key === 'Enter') doLogin(); });
+  $('logoutBtn').addEventListener('click', function () {
+    api('/api/admin/logout', { method: 'POST' }).then(showLogin);
+  });
+
+  /* ---------- 页签 ---------- */
+  var loaded = {};
+  $('tabs').addEventListener('click', function (e) {
+    var btn = e.target.closest('button[data-tab]');
+    if (!btn) return;
+    Array.prototype.forEach.call($('tabs').children, function (b) { b.classList.toggle('active', b === btn); });
+    ['overview', 'users', 'feedbacks', 'posters', 'system'].forEach(function (t) {
+      $('tab-' + t).classList.toggle('active', t === btn.dataset.tab);
+    });
+    var tab = btn.dataset.tab;
+    if (!loaded[tab]) {
+      loaded[tab] = true;
+      if (tab === 'users') loadUsers(1);
+      if (tab === 'feedbacks') loadFeedbacks();
+      if (tab === 'posters') loadPosters();
+      if (tab === 'system') loadSystem();
+    }
+  });
+
+  /* ---------- 概览 ---------- */
+  var OV = [
+    ['totalUsers', '注册用户'], ['newUsers7d', '近 7 天新增'], ['reminderSubscribers', '提醒订阅人数'],
+    ['yesterdayPushSent', '昨日推送送达'], ['pendingFeedbacks', '待处理反馈'], ['officialPosters', '官方手抄报'],
+    ['totalExams', '出题总数']
+  ];
+  function loadOverview() {
+    api('/api/admin/overview').then(function (r) {
+      if (!r.ok) { $('overviewCards').innerHTML = '<div class="empty">加载失败</div>'; return; }
+      $('overviewCards').innerHTML = OV.map(function (it) {
+        var v = r.data[it[0]];
+        return '<div class="card"><div class="num">' + (v == null ? '暂无' : esc(v)) + '</div><div class="label">' + it[1] + '</div></div>';
+      }).join('');
+      var notes = [];
+      if (r.data.unavailable && r.data.unavailable.length) notes.push('以下指标暂时取不到（数据源缺失，已按实显示为空）：' + r.data.unavailable.join('、'));
+      notes.push('说明：每个家庭的任务、积分、打卡明细保存在家长手机本地，后端看不到，本页不展示这类数据。');
+      $('overviewNote').textContent = notes.join(' ');
+    });
+  }
+
+  /* ---------- 用户 ---------- */
+  var usersPage = 1, usersTotal = 0;
+  function loadUsers(page) {
+    usersPage = page;
+    api('/api/admin/users?page=' + page + '&pageSize=20').then(function (r) {
+      if (!r.ok) { $('usersBody').innerHTML = '<tr><td colspan="6" class="empty">加载失败</td></tr>'; return; }
+      usersTotal = r.data.total || 0;
+      if (!r.data.list.length) { $('usersBody').innerHTML = '<tr><td colspan="6" class="empty">暂无用户</td></tr>'; }
+      else {
+        $('usersBody').innerHTML = r.data.list.map(function (u) {
+          return '<tr>' +
+            '<td>' + (u.avatarUrl ? '<img class="avatar" src="' + esc(u.avatarUrl) + '" alt="">' : '') + '</td>' +
+            '<td>' + esc(u.maskedId) + '</td>' +
+            '<td>' + esc(u.nickname || '-') + '</td>' +
+            '<td>' + (u.registered ? '是' : '否') + '</td>' +
+            '<td>' + (u.subscribedReminder == null ? '未知' : (u.subscribedReminder ? '是' : '否')) + '</td>' +
+            '<td>' + fmtTime(u.createdAt) + '</td></tr>';
+        }).join('');
+      }
+      $('usersPageInfo').textContent = '第 ' + page + ' 页 · 共 ' + usersTotal + ' 人';
+    });
+  }
+  $('usersPrev').addEventListener('click', function () { if (usersPage > 1) loadUsers(usersPage - 1); });
+  $('usersNext').addEventListener('click', function () { if (usersPage * 20 < usersTotal) loadUsers(usersPage + 1); });
+
+  /* ---------- 反馈 ---------- */
+  var CAT = { bug: '不好用', suggestion: '改进建议', feature: '想要新功能', other: '其他', '': '未分类' };
+  var STATUS = { pending: '待处理', read: '已看', planned: '已排期', done: '已解决' };
+  var fbCat = '';
+  $('fbChips').addEventListener('click', function (e) {
+    var btn = e.target.closest('button[data-cat]');
+    if (!btn) return;
+    fbCat = btn.dataset.cat;
+    Array.prototype.forEach.call($('fbChips').children, function (b) { b.classList.toggle('active', b === btn); });
+    loadFeedbacks();
+  });
+  function loadFeedbacks() {
+    var qs = fbCat ? ('?limit=100&category=' + encodeURIComponent(fbCat)) : '?limit=100';
+    api('/api/admin/feedbacks' + qs).then(function (r) {
+      if (!r.ok) { $('fbList').innerHTML = '<div class="empty">加载失败</div>'; return; }
+      if (!r.data.list.length) { $('fbList').innerHTML = '<div class="empty">暂无反馈</div>'; return; }
+      $('fbList').innerHTML = r.data.list.map(function (f) {
+        var opts = Object.keys(STATUS).map(function (s) {
+          return '<option value="' + s + '"' + (f.status === s ? ' selected' : '') + '>' + STATUS[s] + '</option>';
+        }).join('');
+        return '<div class="fb-item">' +
+          '<div class="meta"><span class="tag">' + esc(CAT[f.category] || '未分类') + '</span>' +
+          '<span>' + fmtTime(f.createdAt) + '</span>' +
+          (f.appVersion ? '<span>v' + esc(f.appVersion) + '</span>' : '') +
+          (f.contact ? '<span>联系方式：' + esc(f.contact) + '</span>' : '') + '</div>' +
+          '<div class="content">' + esc(f.content) + '</div>' +
+          '<div class="row"><label>状态</label><select data-fb="' + f.id + '">' + opts + '</select></div>' +
+          '</div>';
+      }).join('');
+    });
+  }
+  $('fbList').addEventListener('change', function (e) {
+    var sel = e.target.closest('select[data-fb]');
+    if (!sel) return;
+    api('/api/admin/feedbacks/' + sel.dataset.fb + '/status', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: sel.value })
+    }).then(function (r) { if (!r.ok) { alert(r.msg || '更新失败'); loadFeedbacks(); } });
+  });
+
+  /* ---------- 手抄报 ---------- */
+  function loadPosters() {
+    api('/api/admin/posters').then(function (r) {
+      if (!r.ok) { $('posterWall').innerHTML = '<div class="empty">加载失败</div>'; return; }
+      if (!r.data.groups.length) { $('posterWall').innerHTML = '<div class="empty">官方库暂无手抄报</div>'; return; }
+      $('posterWall').innerHTML = r.data.groups.map(function (g) {
+        return '<div class="theme-title">' + esc(g.theme) + ' <span>共 ' + g.count + ' 张</span></div>' +
+          '<div class="grid">' + g.list.map(function (p) {
+            return '<div class="poster">' +
+              (p.imageUrl ? '<a href="' + esc(p.imageUrl) + '" target="_blank" rel="noopener"><img loading="lazy" src="' + esc(p.imageUrl) + '" alt=""></a>' : '') +
+              '<div class="p-body"><div class="p-title">' + esc(p.title || p.id) + '</div>' +
+              '<div class="qa-row">' +
+              '<button data-poster="' + esc(p.id) + '" data-qa="ok" class="' + (p.qa === 'ok' ? 'on-ok' : '') + '">合格</button>' +
+              '<button data-poster="' + esc(p.id) + '" data-qa="bad" class="' + (p.qa === 'bad' ? 'on-bad' : '') + '">待换</button>' +
+              '<button data-poster="' + esc(p.id) + '" data-qa="none">清除</button>' +
+              '</div></div></div>';
+          }).join('') + '</div>';
+      }).join('');
+    });
+  }
+  $('posterWall').addEventListener('click', function (e) {
+    var btn = e.target.closest('button[data-poster]');
+    if (!btn) return;
+    api('/api/admin/posters/' + encodeURIComponent(btn.dataset.poster) + '/qa', {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ qa: btn.dataset.qa })
+    }).then(function (r) { if (r.ok) loadPosters(); else alert(r.msg || '标记失败'); });
+  });
+
+  /* ---------- 系统 ---------- */
+  function loadSystem() {
+    api('/api/admin/system').then(function (r) {
+      if (!r.ok) { $('sysBox').innerHTML = '<div class="empty">加载失败</div>'; return; }
+      var d = r.data;
+      var cfg = Object.keys(d.config).map(function (k) {
+        return '<div>' + esc(k) + '：' + (d.config[k] ? '<span class="ok">已配置</span>' : '<span class="no">未配置</span>') + '</div>';
+      }).join('');
+      var audit = (d.auditRecent || []).map(function (a) {
+        return '<div>' + fmtTime(a.ts) + ' · ' + esc(a.action) + ' · ' + esc(a.target || '-') + ' · ' + esc(a.result || '') + '</div>';
+      }).join('') || '<div class="empty">暂无记录</div>';
+      $('sysBox').innerHTML =
+        '<div class="sys-card"><h3>服务状态</h3><div>状态：' + esc(d.status) + '</div><div>版本：' + esc(d.version || '-') + '</div>' +
+        '<div>Node：' + esc(d.node) + '</div><div>已运行：' + Math.floor(d.uptimeSec / 60) + ' 分钟</div><div>服务器时间：' + esc(d.timestamp) + '</div></div>' +
+        '<div class="sys-card"><h3>配置状态（只显示是否配置，不显示内容）</h3>' + cfg + '</div>' +
+        '<div class="sys-card"><h3>最近操作记录</h3>' + audit + '</div>';
+    });
+  }
+
+  /* ---------- 启动：已有会话直接进 ---------- */
+  api('/api/admin/me').then(function (r) { if (r.ok) showApp(); });
+})();
+</script>
+</body>
+</html>

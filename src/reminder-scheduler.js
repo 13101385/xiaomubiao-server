@@ -6,7 +6,7 @@
  *    成功后额度 -1 并标记 reminded_start，绝不重复。
  * 2) 未完成提醒：每天 20:30–21:30 窗口内（错过 20:30 可补发，sent_log 保证每账号每天 ≤1 条）：
  *    当日仍有 todo/doing 任务的账号发一条汇总。
- * 3) 每日精选：每天 07:30–08:30 窗口内，对开启每日精选（同步字段 dailyPush）且有
+ * 3) 每日精选：每天 07:30–07:45 窗口内，对开启每日精选（同步字段 dailyPush）且有
  *    今日卡钩子的账号，用「备忘录任务提醒」模板（与开始提醒共用额度池）推一条
  *    今日亲子话题；sent_log（kind='daily'）保证每账号每天 ≤1 条。
  */
@@ -18,7 +18,7 @@ const TICK_MS = 5 * 60 * 1000;
 const DUE_START_MIN = 20 * 60 + 30; // 20:30
 const DUE_END_MIN = 21 * 60 + 30;   // 21:30
 const DAILY_START_MIN = 7 * 60 + 30; // 07:30
-const DAILY_END_MIN = 8 * 60 + 30;   // 08:30
+const DAILY_END_MIN = 7 * 60 + 45;    // 07:45
 
 let timer = null;
 let ticking = false;

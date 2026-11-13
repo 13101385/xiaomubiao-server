@@ -39,7 +39,7 @@ function createTables() {
     // 订阅消息提醒：发送流水（防重复：如未完成提醒每账号每天最多一条）
     'CREATE TABLE IF NOT EXISTS reminder_sent_log (account_id TEXT NOT NULL, kind TEXT NOT NULL, day TEXT NOT NULL, sent_at INTEGER NOT NULL, PRIMARY KEY(account_id, kind, day))',
     // 订阅消息提醒：每日精选的今日卡钩子镜像 + 开关（按账号+日期一行，早间推送引用）
-    'CREATE TABLE IF NOT EXISTS reminder_daily_hooks (account_id TEXT NOT NULL, date TEXT NOT NULL, topic_q TEXT DEFAULT \'\', science_title TEXT DEFAULT \'\', band TEXT DEFAULT \'\', daily_push INTEGER DEFAULT 0, updated_at INTEGER NOT NULL, PRIMARY KEY(account_id, date))'
+    'CREATE TABLE IF NOT EXISTS reminder_daily_hooks (account_id TEXT NOT NULL, date TEXT NOT NULL, topic_q TEXT DEFAULT \'\', science_title TEXT DEFAULT \'\', band TEXT DEFAULT \'\', daily_push INTEGER DEFAULT 0, updated_at INTEGER NOT NULL, PRIMARY KEY(account_id, date))', 'CREATE TABLE IF NOT EXISTS feedbacks (id INTEGER PRIMARY KEY AUTOINCREMENT, account_id TEXT DEFAULT \'\', category TEXT DEFAULT \'\', content TEXT NOT NULL, contact TEXT DEFAULT \'\', app_version TEXT DEFAULT \'\', created_at INTEGER NOT NULL)'
   ];
   
   const indexes = [
@@ -50,7 +50,7 @@ function createTables() {
     'CREATE INDEX IF NOT EXISTS idx_exams_account ON exams(account_id)',
     'CREATE INDEX IF NOT EXISTS idx_posters_account ON posters(account_id)',
     'CREATE INDEX IF NOT EXISTS idx_reminder_tasks_scan ON reminder_tasks(date, status, reminded_start)',
-    'CREATE INDEX IF NOT EXISTS idx_reminder_tasks_account ON reminder_tasks(account_id, date)'
+    'CREATE INDEX IF NOT EXISTS idx_reminder_tasks_account ON reminder_tasks(account_id, date)', 'CREATE INDEX IF NOT EXISTS idx_feedbacks_created ON feedbacks(created_at)', 'CREATE INDEX IF NOT EXISTS idx_feedbacks_account ON feedbacks(account_id, created_at)'
   ];
   
   return new Promise((resolve, reject) => {
@@ -806,7 +806,7 @@ function cleanupReminderData(beforeDate, beforeDay) {
   });
 }
 
-function close() {
+function createFeedback(f) { return new Promise((resolve, reject) => { db.run('INSERT INTO feedbacks (account_id, category, content, contact, app_version, created_at) VALUES (?, ?, ?, ?, ?, ?)', [f.accountId || '', f.category || '', f.content, f.contact || '', f.appVersion || '', Date.now()], function (err) { if (err) reject(err); else resolve(this.lastID); }); }); } function countFeedbacksSince(accountId, since) { return new Promise((resolve, reject) => { db.get('SELECT COUNT(*) AS n FROM feedbacks WHERE account_id = ? AND created_at >= ?', [accountId || '', since], (err, row) => { if (err) reject(err); else resolve(row ? row.n : 0); }); }); } function listFeedbacks(limit, offset) { const n = Math.max(1, Math.min(parseInt(limit, 10) || 50, 200)); const off = Math.max(0, parseInt(offset, 10) || 0); return new Promise((resolve, reject) => { db.all('SELECT id, account_id, category, content, contact, app_version, created_at FROM feedbacks ORDER BY created_at DESC LIMIT ? OFFSET ?', [n, off], (err, rows) => { if (err) reject(err); else resolve((rows || []).map(r => ({ id: r.id, accountId: r.account_id || '', category: r.category || '', content: r.content, contact: r.contact || '', appVersion: r.app_version || '', createdAt: r.created_at }))); }); }); } function runSql(sql, params) { return new Promise((resolve, reject) => { db.run(sql, params || [], function (err) { if (err) reject(err); else resolve({ changes: this.changes, lastID: this.lastID }); }); }); } function getSql(sql, params) { return new Promise((resolve, reject) => { db.get(sql, params || [], (err, row) => { if (err) reject(err); else resolve(row || null); }); }); } function allSql(sql, params) { return new Promise((resolve, reject) => { db.all(sql, params || [], (err, rows) => { if (err) reject(err); else resolve(rows || []); }); }); } function close() {
   return new Promise((resolve, reject) => {
     if (db) {
       db.close((err) => {
@@ -855,7 +855,7 @@ module.exports = {
   getParentRecord, saveParentRecord, upsertParentProfile, isParentRegistered,
   createExam, listExams, getExam, deleteExam, countExamsToday,
   createPoster, listPosters, listLibraryPosters, allPostersForAdmin, getPoster, deletePoster, updatePoster,
-  putBlob, getBlob,
+  putBlob, getBlob, createFeedback, countFeedbacksSince, listFeedbacks, runSql, getSql, allSql,
   deleteAccountData,
   countPostersToday, countImagesToday,
   addReminderQuota, touchReminderOpenid, getReminderSub, listReminderSubs,

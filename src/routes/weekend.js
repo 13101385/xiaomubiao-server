@@ -10,6 +10,7 @@
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const db = require('../db');
 
 const router = express.Router();
 
@@ -75,6 +76,35 @@ router.get('/all', (req, res) => {
     cities: Array.isArray(raw.cities) ? raw.cities : [],
     byCity
   });
+});
+
+/* ---------- 未开通城市需求统计（1.5.16 新增） ----------
+ * POST /api/weekend/city-demand { accountId, city }
+ * 小程序定位到未收录城市时上报城市名（只报城市名，不含坐标）。
+ * 落库 weekend_city_demand 表（本路由懒建表，不改 db.js），
+ * 管理后台 GET /api/admin/city-demand 按城市聚合展示，供按热度排开通顺序。 */
+let demandTableReady = false;
+async function ensureDemandTable() {
+  if (demandTableReady) return;
+  await db.runSql("CREATE TABLE IF NOT EXISTS weekend_city_demand (id INTEGER PRIMARY KEY AUTOINCREMENT, city TEXT DEFAULT '', account_id TEXT DEFAULT '', created_at INTEGER NOT NULL)");
+  await db.runSql('CREATE INDEX IF NOT EXISTS idx_wkd_city ON weekend_city_demand(city)');
+  demandTableReady = true;
+}
+
+router.post('/city-demand', async (req, res) => {
+  const body = req.body || {};
+  const city = String(body.city || '').trim().slice(0, 20);
+  const accountId = String(body.accountId || '').slice(0, 64);
+  try {
+    await ensureDemandTable();
+    await db.runSql(
+      'INSERT INTO weekend_city_demand (city, account_id, created_at) VALUES (?, ?, ?)',
+      [city, accountId, Date.now()]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, code: 'DEMAND_SAVE_FAILED', msg: '需求记录失败' });
+  }
 });
 
 module.exports = router;

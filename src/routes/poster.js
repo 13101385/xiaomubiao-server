@@ -38,6 +38,62 @@ const MAX_STYLE_LEN = 50; // 风格描述最大字数
 
 const GRADES = ['小学一年级', '小学二年级', '小学三年级', '小学四年级', '小学五年级', '小学六年级'];
 
+/* ==================== 年级分档口径 ====================
+ * 2026-11-15 改造（用户裁决）：年级不再只是一个塞进提示词的字符串标签。
+ * 每个年级映射到一组可执行约束——文字量（contentLen/bullets）、句式与生字（text）、
+ * 内容深度（text）、画面复杂度（visual）——由 buildPrompt（文案）、
+ * buildImagePrompt（生图）、refine（要求补全）在构造提示词时按年级查表注入。
+ * 分档原则：低年级字少句短、只用常用字、画面元素少而大；年级越高，
+ * 文字量、知识深度与画面信息量逐级递增。未知年级回落三年级口径。 */
+const GRADE_PROFILES = {
+  '小学一年级': {
+    contentLen: '20~40', bullets: '1~2',
+    text: '句子要短，一句只说一个意思；只用一年级小朋友学过的常用字，不用生僻字、不用成语和书面语；内容只讲看得见摸得着的事物（颜色、形状、身边的人和事），以观察、认识、感受为主，不讲抽象道理；语气活泼亲切，像讲给刚上学的孩子听',
+    visual: '画面元素少而大：主体 1~2 个、个头大、轮廓圆润饱满，背景简单干净，线条粗、造型简单，装饰只用少量大号元素；配色明快、饱和度高；不要密集小装饰、不要复杂多层场景'
+  },
+  '小学二年级': {
+    contentLen: '30~60', bullets: '2~3',
+    text: '句子简短完整，一句一个意思；以常用字为主，可用最常见的简单词语，不用生僻字和成语典故；内容以观察和简单常识为主，可以有一句简单的原因说明；语气亲切自然',
+    visual: '画面主体突出、元素适中：主场景 1 个加少量大号装饰，线条简单圆润，背景干净不堆砌；配色明快；不要密集小元素和复杂构图'
+  },
+  '小学三年级': {
+    contentLen: '60~120', bullets: '2~5',
+    text: '句子完整通顺；可用常见成语和简单修辞；内容要有具体知识信息（由来、习俗、常识、做法），不能只有口号；难度符合三年级学生的认知水平',
+    visual: '画面元素丰富适中：主场景完整，可有 2~3 个辅助元素和适量装饰细节，构图整洁有层次；配色鲜艳明快'
+  },
+  '小学四年级': {
+    contentLen: '80~140', bullets: '3~4',
+    text: '语言通顺准确，可用成语、谚语和恰当修辞；内容要有知识含量：讲清来历、原理或做法步骤，可引用具体例子和简单数据；难度符合四年级学生的认知水平',
+    visual: '画面细节较丰富：主场景加 3~4 个辅助元素，允许小场景呼应和精细装饰，构图有层次；风格可稍成熟，不要过于幼儿化'
+  },
+  '小学五年级': {
+    contentLen: '100~160', bullets: '3~5',
+    text: '可用成语、名言警句和准确的学科词汇；内容要有深度：历史背景、科学原理、文化内涵或社会意义，观点明确，可带倡议；难度符合五年级学生的认知水平',
+    visual: '画面细节丰富、构图层次多：主场景加多个辅助元素和小场景呼应，装饰精细，信息量大；风格偏成熟稳重，不要婴儿化造型'
+  },
+  '小学六年级': {
+    contentLen: '120~180', bullets: '3~5',
+    text: '可用成语、名言警句、古诗文和准确的学科术语；内容要有深度和思辨：历史纵深、科学原理、社会意义或个人见解，引用要具体（人物、事件、数据、诗句出处）；难度符合六年级学生的认知水平',
+    visual: '画面细节丰富、构图层次多：主场景加多个辅助元素和小场景呼应，装饰精细，信息量大；风格成熟稳重，可用国风、科普写实等偏大龄的画法，不要婴儿化造型'
+  }
+};
+
+function gradeProfile(grade) {
+  return GRADE_PROFILES[grade] || GRADE_PROFILES['小学三年级'];
+}
+
+/* 文字约束文本：注入文案生成与要求补全提示词（文字量数字与 text 口径同源于映射表） */
+function gradeTextRule(grade) {
+  const p = gradeProfile(grade);
+  return `【年级适配：${grade}】必须严格按这个年级写：每个板块正文 ${p.contentLen} 字、要点 ${p.bullets} 条；${p.text}。`;
+}
+
+/* 画面约束文本：注入生图提示词（主体大小、元素密度、线条与构图复杂度按年级分档） */
+function gradeVisualRule(grade) {
+  const p = gradeProfile(grade);
+  return `【年级画面适配：${grade}】${p.visual}。`;
+}
+
 /* ==================== agnes 调用 ==================== */
 
 /**
@@ -152,7 +208,7 @@ function buildPrompt(params) {
   return `请为小学主题手抄报设计一份完整方案。
 
 【主题】${theme}
-【年级适配】${grade}（内容难度、用词、知识点必须符合该年级学生的认知水平）
+${gradeTextRule(grade)}
 【画面风格】${styleText}
 ${customText}
 
@@ -168,15 +224,14 @@ ${customText}
   "sections": [
     { "icon": "🧧", "title": "板块标题", "content": "一段内容", "bullets": ["要点1", "要点2"] }
   ],
-  "decorTips": ["插图建议1", "插图建议2"],
-  "writeTips": "书写/排版提示"
 }
 
 【要求】
 - sections 4~6 个板块，内容具体、紧扣「${theme}」主题${iconRule}
-- 每个板块的 content 控制在 60~120 字，bullets 2~5 条
+- 每个板块的 content 控制在 ${gradeProfile(grade).contentLen} 字，bullets ${gradeProfile(grade).bullets} 条（与上面年级适配同口径，必须严格执行）
 - colorScheme 三个颜色都必须是 #RRGGBB 格式
-- title 控制在 12 个字以内`;
+- title 控制在 12 个字以内
+- 【硬性禁令】成品图会直接打印交作业，整张图只能是手抄报正文：sections 只许是正文板块，禁止出现书写提示、排版提示、装饰建议、小贴士之类的指导性内容，也不要输出 writeTips、decorTips 字段`;
 }
 
 /**
@@ -197,6 +252,7 @@ function buildImagePrompt(params) {
       .join('\n');
     return `绘制一张竖版 A4 比例 3:4 的儿童手抄报，主题「${theme}」（${grade}）。
 【画风】扁平卡通（flat cartoon），色彩鲜艳明快，构图整洁，适合 A4 直接打印。
+${gradeVisualRule(grade)}
 【顶部标题】醒目大标题「${c.title || theme}」${c.subtitle ? '，副标题「' + c.subtitle + '」' : ''}
 ${secs}
 【硬性要求】
@@ -211,6 +267,7 @@ ${secs}
     const scene = String(custom).trim().slice(0, 400) || (theme + '主题的欢乐卡通场景');
     return `绘制一张横向的儿童插画横幅，卡通风格：${styleText}。
 画面内容：${scene}。
+${gradeVisualRule(grade)}
 【要求】画面饱满、色彩鲜艳、主体突出、细节丰富；适合作为手抄报的题头插画。
 【绝对禁止】画面中不得出现任何文字、汉字、字母、数字、拼音、水印、签名。`;
   }
@@ -218,7 +275,7 @@ ${secs}
   return `请绘制一张儿童手抄报插画底图，竖版 A4 比例约 3:4，适合打印。
 
 【主题】${theme}
-【年级适配】${grade}（画面元素和复杂度符合该年级学生喜好）
+${gradeVisualRule(grade)}
 【画面风格】${styleText}
 
 【版面结构】（必须严格遵守，从上到下分为四个区域）
@@ -273,6 +330,8 @@ router.post('/generate', async (req, res) => {
     }
     // 图标净化：清单外图标映射到清单内近似/默认图标（落库即净化，详情/PDF/合成同口径）
     emojiAssets.sanitizePlanIcons(poster);
+    // 整改 2026-11-14：成品图须整张即手抄报正文（可直接下载交作业），禁止书写小贴士/装饰建议等非正文板块
+    delete poster.writeTips; delete poster.decorTips;
 
     const record = {
       id: 'poster_' + crypto.randomBytes(8).toString('hex'),
@@ -368,6 +427,8 @@ router.post('/generate-image', async (req, res) => {
     }
     // 图标净化：清单外图标（如 🔥🛟👫📞）映射到清单内近似/默认图标，角标不再画码点文字
     emojiAssets.sanitizePlanIcons(plan);
+    // 整改 2026-11-14：成品图须整张即手抄报正文（可直接下载交作业），禁止书写小贴士/装饰建议等非正文板块
+    delete plan.writeTips; delete plan.decorTips;
 
     const heroResp = await axios.get(url, { responseType: 'arraybuffer', timeout: 30000 });
     const heroBuf = Buffer.from(heroResp.data || []);
@@ -642,7 +703,7 @@ router.post('/refine', async (req, res) => {
 
   const input = String(rough).trim().slice(0, 600);
   const prompt = `你是小学生手抄报指导老师。手抄报主题「${theme || '自定'}」（${grade || '小学'}）。
-用户的需求描述：
+${GRADES.includes(grade) ? gradeTextRule(grade) + '\n' : ''}用户的需求描述：
 「${input}」
 
 请把它整理/扩写成一份详细的手抄报制作说明，建议总长度 400~500 字左右（内容需要时可适当更多，不设硬性上限），用数字序号分条，必须覆盖以下 6 个方面：
@@ -1104,30 +1165,7 @@ function drawReferencePage(doc, ctx) {
   }
   y += swatchH + 22;
 
-  // 装饰建议
-  if ((ctx.content.decorTips || []).length > 0) {
-    fit(26);
-    doc.fillColor(mainColor).fontSize(13).text('装饰建议', margin, y, { width: contentW });
-    y = doc.y + 5;
-    for (const tip of ctx.content.decorTips) {
-      const need = doc.heightOfString('• ' + tip, { width: contentW - 16, lineGap: 1.5 }) + 6;
-      fit(need);
-      doc.fillColor('#555555').fontSize(10).text('• ' + tip, margin + 16, y, { width: contentW - 16, lineGap: 1.5 });
-      y = doc.y + 1;
-    }
-    y += 6;
-  }
 
-  // 书写提示
-  if (ctx.content.writeTips) {
-    fit(34);
-    doc.fillColor(mainColor).fontSize(13).text('书写提示', margin, y, { width: contentW });
-    y = doc.y + 5;
-    const need = doc.heightOfString(ctx.content.writeTips, { width: contentW, lineGap: 2 }) + 8;
-    fit(need);
-    doc.fillColor('#555555').fontSize(10.5).text(ctx.content.writeTips, margin, y, { width: contentW, lineGap: 2 });
-    y = doc.y + 6;
-  }
 
   // 底部小字：版面布局说明
   const layoutDesc = [ctx.content.layout, ctx.content.layoutDesc].filter(Boolean).join('：');
@@ -1324,3 +1362,11 @@ router.get('/:id/pdf', async (req, res) => {
 });
 
 module.exports = router;
+/* 供质量自测直接调用取证：年级映射表与提示词构造函数（验证年级约束真的注入提示词） */
+module.exports.GRADES = GRADES;
+module.exports.GRADE_PROFILES = GRADE_PROFILES;
+module.exports.gradeProfile = gradeProfile;
+module.exports.gradeTextRule = gradeTextRule;
+module.exports.gradeVisualRule = gradeVisualRule;
+module.exports.buildPrompt = buildPrompt;
+module.exports.buildImagePrompt = buildImagePrompt;

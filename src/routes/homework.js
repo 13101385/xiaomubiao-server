@@ -10,8 +10,9 @@
  * - AI 只给「建议」，不落库、不判分；是否生效由家长在小程序端逐题确认（前端完成）。
  * - 照片只在临时目录短暂停留（单次请求生命周期 + 10 分钟 TTL 清扫），不入数据库。
  * - 限流：同一账号 1 小时最多 20 次（与 feedback 同口径），无账号按来源 IP 计；内存计数。
- * - 依赖：环境变量 AGNES_AI_API_KEY（与 poster/exam 相同来源，config.agnes）。
- * - 本文件不依赖 db，可独立挂载自测；Agnes 调用可经 __setAgnesVisionCaller 注入 mock。
+ * - 依赖：优先火山方舟（环境变量 ARK_API_KEY，豆包视觉，base64 直传不需要临时图）；
+ *   未配置 ARK_API_KEY 时回退 Agnes（环境变量 AGNES_AI_API_KEY，config.agnes，走临时图 URL）。
+ * - 本文件不依赖 db，可独立挂载自测；两家调用均可经 __set*VisionCaller 注入 mock。
  */
 const express = require('express');
 const axios = require('axios');
@@ -116,6 +117,59 @@ async function defaultAgnesVision(imageUrl, subject) {
 }
 
 let agnesVisionCaller = defaultAgnesVision;
+
+/* ==================== 火山方舟视觉调用（主力） ==================== */
+
+const ARK_BASE = 'https://ark.cn-beijing.volces.com/api/v3';
+const ARK_DEFAULT_MODEL = 'doubao-seed-2-1-pro-260915';
+
+/** 默认方舟调用（OpenAI 兼容 chat/completions，图片以 base64 data URL 直传）。返回模型文本。 */
+async function defaultArkVision(dataUrl, subject) {
+  const apiKey = process.env.ARK_API_KEY || '';
+  if (!apiKey) {
+    const err = new Error('服务器未配置 ARK_API_KEY');
+    err.code = 'ARK_NOT_CONFIGURED';
+    throw err;
+  }
+  const model = process.env.ARK_MODEL || ARK_DEFAULT_MODEL;
+  const resp = await axios.post(ARK_BASE + '/chat/completions', {
+    model,
+    messages: [
+      { role: 'system', content: '你只输出严格 JSON，不输出任何其他文字、markdown 或解释。' },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: buildPrompt(subject) },
+          { type: 'image_url', image_url: { url: dataUrl } }
+        ]
+      }
+    ],
+    temperature: 0.2,
+    max_tokens: 4096
+  }, {
+    headers: {
+      'Authorization': 'Bearer ' + apiKey,
+      'Content-Type': 'application/json'
+    },
+    timeout: 90000
+  });
+  const content = resp.data && resp.data.choices && resp.data.choices[0]
+    ? (resp.data.choices[0].message && resp.data.choices[0].message.content) || ''
+    : '';
+  if (!content) {
+    const err = new Error('AI 未返回内容');
+    err.code = 'ARK_FAILED';
+    throw err;
+  }
+  return String(content);
+}
+
+let arkVisionCaller = defaultArkVision;
+
+/** 当前生效的视觉提供方：配了 ARK_API_KEY 走方舟，否则回退 Agnes。 */
+function visionProvider() {
+  return process.env.ARK_API_KEY ? 'ark' : 'agnes';
+}
 
 /* ==================== 返回解析与归一化（容错） ==================== */
 
@@ -306,13 +360,20 @@ router.post('/grade-photo', async (req, res) => {
   try {
     sweepTmp();
     const { buf, ext } = decodeImage(body.imageBase64);
-    ensureTmpDir();
-    const name = crypto.randomBytes(16).toString('hex') + '.' + ext;
-    tmpFile = path.join(TMP_DIR, name);
-    fs.writeFileSync(tmpFile, buf);
-    const imageUrl = publicBase(req) + '/api/homework/tmp/' + name;
-
-    const text = await agnesVisionCaller(imageUrl, subject);
+    let text;
+    if (visionProvider() === 'ark') {
+      // 方舟支持 base64 直传，照片不落盘
+      const dataUrl = 'data:image/' + (ext === 'png' ? 'png' : 'jpeg') + ';base64,' + buf.toString('base64');
+      text = await arkVisionCaller(dataUrl, subject);
+    } else {
+      // Agnes 需要公网 URL：照片落临时目录，请求结束即删
+      ensureTmpDir();
+      const name = crypto.randomBytes(16).toString('hex') + '.' + ext;
+      tmpFile = path.join(TMP_DIR, name);
+      fs.writeFileSync(tmpFile, buf);
+      const imageUrl = publicBase(req) + '/api/homework/tmp/' + name;
+      text = await agnesVisionCaller(imageUrl, subject);
+    }
     const items = normalizeItems(extractJson(text));
     res.json({ ok: true, data: { items, count: items.length } });
   } catch (err) {
@@ -323,16 +384,16 @@ router.post('/grade-photo', async (req, res) => {
     if (code === 'IMAGE_INVALID') {
       return res.status(400).json({ ok: false, code, msg: err.message });
     }
-    if (code === 'AGNES_NOT_CONFIGURED') {
-      console.error('[HOMEWORK] agnes not configured');
+    if (/_NOT_CONFIGURED$/.test(code)) {
+      console.error('[HOMEWORK] vision provider not configured:', code);
       return res.status(500).json({ ok: false, code, msg: 'AI 批改暂未开通，请先用手动批改' });
     }
-    if (code === 'AGNES_BAD_JSON') {
-      console.error('[HOMEWORK] agnes bad json:', err.message);
-      return res.status(502).json({ ok: false, code, msg: 'AI 没看清这张照片，请拍清楚一点后重试' });
+    if (/_BAD_JSON$/.test(code)) {
+      console.error('[HOMEWORK] vision bad json:', err.message);
+      return res.status(502).json({ ok: false, code: 'AI_BAD_JSON', msg: 'AI 没看清这张照片，请拍清楚一点后重试' });
     }
     console.error('[HOMEWORK] grade-photo error:', err && err.message);
-    return res.status(502).json({ ok: false, code: 'AGNES_FAILED', msg: 'AI 批改失败了，请稍后重试或用手动批改' });
+    return res.status(502).json({ ok: false, code: 'AI_FAILED', msg: 'AI 批改失败了，请稍后重试或用手动批改' });
   } finally {
     if (tmpFile) fs.unlink(tmpFile, () => {});
   }
@@ -341,5 +402,6 @@ router.post('/grade-photo', async (req, res) => {
 module.exports = router;
 /* 自测钩子（不影响线上行为）：注入 mock Agnes 调用 / 重置限流 / 暴露纯函数 */
 module.exports.__setAgnesVisionCaller = (fn) => { agnesVisionCaller = typeof fn === 'function' ? fn : defaultAgnesVision; };
+module.exports.__setArkVisionCaller = (fn) => { arkVisionCaller = typeof fn === 'function' ? fn : defaultArkVision; };
 module.exports.__resetRateLimit = () => rateMap.clear();
 module.exports._internals = { buildPrompt, extractJson, normalizeItems, decodeImage, TMP_DIR, TMP_NAME_RE };

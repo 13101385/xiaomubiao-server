@@ -241,6 +241,27 @@ router.get('/overview', async (req, res) => {
   res.json({ ok: true, data });
 });
 
+/* ==================== 周末未开通城市需求（1.5.16 新增，只读聚合） ==================== */
+// 数据来自 weekend_city_demand 表（POST /api/weekend/city-demand 落库，本接口只聚合展示）
+router.get('/city-demand', async (req, res) => {
+  try {
+    const rows = await db.allSql(
+      "SELECT city AS city, COUNT(*) AS hits, COUNT(DISTINCT NULLIF(account_id, '')) AS users, MAX(created_at) AS last_at " +
+      'FROM weekend_city_demand GROUP BY city ORDER BY hits DESC, last_at DESC LIMIT 100'
+    );
+    const data = (rows || []).map((r) => ({
+      city: r.city || '',
+      hits: r.hits || 0,
+      users: r.users || 0,
+      lastAt: r.last_at || 0
+    }));
+    res.json({ ok: true, data });
+  } catch (e) {
+    // 表还没建（尚无任何上报）时按空数据返回，不报错
+    res.json({ ok: true, data: [], unavailable: true });
+  }
+});
+
 /* ==================== 用户（只读、脱敏） ==================== */
 
 function maskId(id) {

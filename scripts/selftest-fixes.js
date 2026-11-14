@@ -70,6 +70,48 @@ assert(Q.checkClosestQuestion(tieQ) === 'bad', '验算题并列最近（双解�
 const normalQ = { q: '3+4 等于几？', options: ['6', '7', '8', '9'], answer: 'B', analysis: '解析'};
 assert(Q.checkClosestQuestion(normalQ) === null, '普通题不触发验算');
 assert(Q.evalExpr('3.98*25') === 99.5 && Q.evalExpr('(2+3)*4') === 20, '表达式求值正确');
+
+/* ---- 2026-11-15 出题评测修复批 ---- */
+// #2 选项前缀剥离（「A. A. 山」场景）
+assert(Q.stripOptionPrefix('A. 山') === '山', '选项前缀「A. 」被剥离');
+assert(Q.stripOptionPrefix('A、伦敦') === '伦敦' && Q.stripOptionPrefix('(B) 巴黎') === '巴黎'
+&& Q.stripOptionPrefix('（C）罗马') === '罗马', '选项前缀「A、」「(B)」「（C）」均被剥离');
+assert(Q.stripOptionPrefix('A cat') === 'A cat' && Q.stripOptionPrefix('apple') === 'apple', '英文选项正文不误剥');
+const preExam = { sections: [{ type: 'choice', questions: [{ q: '最高的山是？', options: ['A. 珠穆朗玛峰', 'B、喜马拉雅山', '丙山', '丁山'], answer: 'A', analysis: '解析内容'}]}]};
+Q.cleanExamOptions(preExam);
+const rendered = 'A. ' + preExam.sections[0].questions[0].options[0];
+assert(rendered === 'A. 珠穆朗玛峰' &&!rendered.includes('A. A.'), '净化后渲染不再出现「A. A. 」双前缀');
+// #4 学科配比净化
+const cnSan = Q.sanitizeCountsForSubject('语文', { choice: 5, fill: 5, trueFalse: 5, shortAnswer: 2, calculation: 3, essay: 0});
+assert(cnSan.moved === 3 && cnSan.counts.calculation === 0 && cnSan.counts.shortAnswer === 5, '语文卷 calculation 3 题等量补位简答');
+const mathSan = Q.sanitizeCountsForSubject('数学', { calculation: 3});
+assert(mathSan.moved === 0 && mathSan.counts.calculation === 3, '数学卷 calculation 保留');
+// #3/#5 年级与册次护栏
+const g1en = Q.gradeGuardrails('英语', '小学一年级', '上册').join(' ');
+assert(g1en.includes('现在进行时') && g1en.includes('下册'), '一年级英语护栏含禁时态 + 上册禁下册内容');
+assert(Q.gradeGuardrails('英语', '小学三年级', '').join(' ').includes('物主代词'), '三年级英语护栏含禁超前物主代词');
+assert(Q.gradeGuardrails('语文', '小学一年级', '').join(' ').includes('笔顺规范'), '低年级语文护栏含笔顺规范要求');
+// #6 笔顺工具
+assert(Q.strokeSequence('水共有四画，笔顺为：竖钩、横撇、撇、捺。').join('/') === '竖钩/横撇/撇/捺', '笔顺序列抽取正确（水）');
+assert(Q.isStrokeQuestion({ q: '请写出「水」的笔顺', answer: 'x'}), '笔顺题被识别');
+const strokeBad = Q.structuralIssues(
+{ q: '请写出「水」的笔顺', answer: '笔顺为：竖钩、横撇、撇、捺', analysis: '笔顺为：横撇、竖钩、撇、捺，要牢记。'},
+'calculation', { subject: '语文'});
+assert(strokeBad.some(s => s.includes('笔顺')), '解析笔顺与答案不一致被检出');
+const strokeOk = Q.structuralIssues(
+{ q: '请写出「水」的笔顺', answer: '笔顺为：竖钩、横撇、撇、捺', analysis: '笔顺为：竖钩、横撇、撇、捺，共四画。'},
+'calculation', { subject: '语文'});
+assert(!strokeOk.some(s => s.includes('笔顺')), '解析笔顺与答案一致不误报');
+// #1 重试判定 + 提示词护栏（经路由内部钩子）
+const examRoute = require('../src/routes/exam');
+assert(examRoute.isRetryableAgnesError({ response: { status: 429}}) === true, '429 判定可重试');
+assert(examRoute.isRetryableAgnesError({ response: { status: 500}}) === true, '5xx 判定可重试');
+assert(examRoute.isRetryableAgnesError({ response: { status: 400}}) === false, '400 判定不可重试');
+assert(examRoute.isRetryableAgnesError(new Error('AI 返回内容解析失败（返回内容不是有效 JSON）')) === true, 'JSON 解析失败判定可重试');
+assert(examRoute.isRetryableAgnesError(new Error('服务器未配置 AGNES_AI_API_KEY')) === false, '未配置密钥判定不可重试');
+const p1 = examRoute.buildPrompt({ subject: '英语', grade: '小学一年级', term: '上册', choice: 5, shortAnswer: 2});
+assert(p1.includes('现在进行时') && p1.includes('册次：上册'), '生成提示词含一年级英语红线与册次');
+assert(p1.includes('禁止带 "A."'), '生成提示词含选项禁前缀要求');
 }
 
 /* ================= Part 2：修复闭环（脚本化替身） ================= */
@@ -78,7 +120,7 @@ function solverFor(prompt) {
 const blocks = prompt.split(/---Q\d+---/).slice(1);
 const table = [
 ['3+4', 'B'], ['5×6', 'A'], ['7×8', 'B'], ['7+5', 'B'], ['2×9', 'A'], ['9×9', 'A'], ['10-4', '6'],
-['法国的首都是', 'A']
+['法国的首都是', 'A'], ['笔顺', '竖钩、横撇、撇、捺']
 ];
 return { results: blocks.map((b, i) => {
 const hit = table.find(([mark]) => b.includes(mark));
@@ -148,12 +190,34 @@ const r2 = await Q.processExam(examCn, { subject: '语文', grade: '小学三年
 const allCn = r2.exam.sections.flatMap(s => s.questions);
 assert(allCn.length === 1 &&!Q.hasEnglishViolation(allCn[0]), '语文混英文题已被重出为纯中文题');
 assert(r2.exam.totalScore === 100, '语文卷总分恒为 100');
+
+// 笔顺题闭环（评测 P1）：计算题形态的笔顺题不在旧复核范围——答案笔顺写反必须被盲解复核抓住并重出
+const fakeStroke = async (prompt) => {
+if (prompt.includes('独立解答')) return solverFor(prompt);
+if (prompt.includes('简明解析')) return { results: []};
+if (prompt.includes('重新命制')) {
+return { q: '请写出汉字「水」的笔顺。', answer: '笔顺为：竖钩、横撇、撇、捺', analysis: '笔顺为：竖钩、横撇、撇、捺，共四画。'};
+}
+throw new Error('未预期的 prompt');
+};
+const examStroke = {
+title: '语文测试', subject: '语文', grade: '小学一年级',
+sections: [{ type: 'calculation', name: '计算题', questions: [
+{ q: '请计算下面汉字的笔画总数，并列出笔顺。汉字：水', answer: '水共有四画，笔顺为：横撇、竖钩、撇、捺', analysis: '笔顺为：横撇、竖钩、撇、捺。'}
+]}]
+};
+const r3 = await Q.processExam(examStroke, { subject: '语文', grade: '小学一年级', difficulty: '中等', knowledge: '汉字笔顺'}, fakeStroke);
+const allStroke = r3.exam.sections.flatMap(s => s.questions);
+assert(r3.report.strokeChecked === 1, '笔顺计算题被纳入盲解复核（strokeChecked=1）');
+assert(allStroke.length === 1 && Q.strokeSequence(allStroke[0].answer).join('/') === '竖钩/横撇/撇/捺',
+'笔顺写反的题已被重出为正确笔顺');
 }
 
 /* ================= Part 3：真实服务 E2E ================= */
 const APP_PORT = 18099, FAKE_PORT = 18999;
 const templates = require('../scripts/poster-library/templates.json');
 const fangPlan = templates.find(t => t.theme === '防溺水');
+let retryHits = 0; // __RETRY__ 场景：主生成调用前两次回 429，验证后端退避重试
 
 function fakeAgnes(req, res) {
 let body = '';
@@ -182,7 +246,42 @@ const blocks = userMsg.split(/---Q\d+---/).slice(1);
 return chat({ results: blocks.map((_, i) => ({ i: i + 1, analysis: '结合题干一步步推导即可得出答案。'}))});
 }
 if (userMsg.includes('重新命制')) {
+if (userMsg.includes('__DROP__')) {
+// __DROP__ 场景：重出也顽固给错答题，逼管线丢弃 → 触发补题
+return chat({ q: '9×9等于几？', options: ['81', '72', '90', '99'], answer: 'B', analysis: '九九八十一。'});
+}
 return chat({ q: '2×9等于几？', options: ['18', '16', '20', '12'], answer: 'A', analysis: '二九十八，2×9=18。'});
+}
+if (userMsg.includes('__RETRY__') && userMsg.includes('生成一份')) {
+retryHits++;
+if (retryHits <= 2) {
+res.writeHead(429, { 'Content-Type': 'application/json'});
+return res.end(JSON.stringify({ error: 'rate limited'}));
+}
+}
+if (userMsg.includes('补题要求')) {
+return chat({
+title: '补题', subject: '数学', grade: '小学三年级', difficulty: '中等', durationMin: 60,
+sections: [
+{ name: '选择题', type: 'choice', scorePer: 2, instructions: '选择题共1小题', questions: [
+{ q: '2×9等于几？', options: ['18', '16', '20', '12'], answer: 'A', analysis: '二九十八，2×9=18。', score: 2}
+]}
+]
+});
+}
+if (userMsg.includes('__DROP__') && userMsg.includes('生成一份')) {
+return chat({
+title: '小学三年级·数学试卷', subject: '数学', grade: '小学三年级', difficulty: '中等', durationMin: 60,
+sections: [
+{ name: '选择题', type: 'choice', scorePer: 2, instructions: '选择题共2小题', questions: [
+{ q: '3+4等于几？', options: ['6', '7', '8', '9'], answer: 'B', analysis: '3+4=7。', score: 2},
+{ q: '7×8等于几？', options: ['54', '56', '48', '64'], answer: 'A', analysis: '七八五十六。', score: 2}
+]},
+{ name: '填空题', type: 'fill', scorePer: 2, instructions: '填空题共1小题', questions: [
+{ q: '10-4=（ ）', answer: '6', analysis: '10-4=6。', score: 2}
+]}
+]
+});
 }
 if (userMsg.includes('生成一份')) {
 // 缺陷试卷：5×6 错答、7+5 缺解析、分值随意
@@ -290,6 +389,34 @@ const total = allQ.reduce((a, q) => a + (q.score || 0), 0);
 assert(total === 100 && content.totalScore === 100, '全卷总分恒为 100（实际 ' + total + '）');
 assert(content.quality && content.quality.regenerated === 1, '质量报告记录重出 1 道');
 console.log(' 质量报告:', JSON.stringify(content.quality));
+
+/* ---- 2026-11-15 出题评测修复批 E2E ---- */
+// #1 上游 429 两次后重试成功
+const rgen = await httpJson('POST', `http://127.0.0.1:${APP_PORT}/api/exam/generate`, {
+accountId: 'selftest-retry', subject: '数学', grade: '小学三年级', difficulty: '中等', knowledge: '__RETRY__', choice: 3, fill: 1
+});
+assert(rgen.json && rgen.json.ok, '上游 429 两次后生成仍成功（后端退避重试生效）');
+assert(retryHits === 3, `主生成调用共尝试 3 次（实际 ${retryHits}）`);
+// #5 顽固坏题被丢弃后自动补题到请求数量
+const dgen = await httpJson('POST', `http://127.0.0.1:${APP_PORT}/api/exam/generate`, {
+accountId: 'selftest-drop', subject: '数学', grade: '小学三年级', difficulty: '中等', knowledge: '__DROP__', choice: 2, fill: 1
+});
+assert(dgen.json && dgen.json.ok && dgen.json.requested === 3 && dgen.json.delivered === 3 && dgen.json.missing === 0,
+`丢题后补齐到请求数量（requested ${dgen.json && dgen.json.requested} / delivered ${dgen.json && dgen.json.delivered} / missing ${dgen.json && dgen.json.missing}）`);
+const dd = await httpJson('GET', `http://127.0.0.1:${APP_PORT}/api/exam/${dgen.json.examId}?accountId=selftest-drop`);
+const dcontent = dd.json && dd.json.exam && dd.json.exam.content;
+const dallQ = dcontent? dcontent.sections.flatMap(s => s.questions): [];
+assert(!dallQ.some(q => q.q.includes('7×8')) && dallQ.some(q => q.q.includes('2×9')), '顽固坏题 7×8 已丢弃、补题 2×9 已并入');
+assert(dcontent.quality && dcontent.quality.toppedUp === 1, '质量报告记录补题 1 道');
+// #4 跨学科 calculation：后端剔除并补位、响应带 requested/missing
+const cgen = await httpJson('POST', `http://127.0.0.1:${APP_PORT}/api/exam/generate`, {
+accountId: 'selftest-cn', subject: '语文', grade: '小学三年级', difficulty: '中等', choice: 2, calculation: 3
+});
+assert(cgen.json && cgen.json.ok && cgen.json.requested === 5, '语文卷带 calculation 请求：requested 按补位后总量 5 计');
+const cd = await httpJson('GET', `http://127.0.0.1:${APP_PORT}/api/exam/${cgen.json.examId}?accountId=selftest-cn`);
+const ccontent = cd.json && cd.json.exam && cd.json.exam.content;
+assert(ccontent &&!ccontent.sections.some(s => s.type === 'calculation'), '交付卷无计算题板块（已被剔除补位）');
+assert(ccontent.delivery && ccontent.delivery.crossSubjectMoved === 3, 'delivery 记录跨学科补位 3 题');
 } finally {
 app.kill('SIGKILL');
 fake.close();

@@ -26,10 +26,46 @@ const QUESTION_TYPES = ['选择题', '填空题', '判断题', '简答题', '计
 
 /* ==================== agnes 调用 ==================== */
 
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+/** 可重试的上游错误：429 限流 / 5xx / 网络与超时 / 内容解析失败（换一次采样可能成功） */
+function isRetryableAgnesError(err) {
+  if (!err) return false;
+  const msg = err.message || '';
+  if (msg.includes('未配置')) return false; // 配置缺失重试无用
+  const status = err.response && err.response.status;
+  if (status) return status === 429 || status >= 500;
+  if (err.code) return true; // ECONNRESET / ETIMEDOUT 等网络类
+  return /解析失败|未返回内容/.test(msg);
+}
+
 /**
- * 调用 agnes（OpenAI 兼容）生成试卷
+ * 调用 agnes（带退避重试，最多 3 次）。
+ * 评测实测单次调用成功率仅 56%（429 为主），无重试时家长点一次失败一次。
  */
 async function callAgnes(prompt) {
+  const delays = [1500, 4000];
+  let lastErr = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await callAgnesOnce(prompt);
+    } catch (e) {
+      lastErr = e;
+      if (attempt < 2 && isRetryableAgnesError(e)) {
+        console.warn(`[EXAM] agnes 调用失败（第 ${attempt + 1} 次），${delays[attempt]}ms 后重试：${e.message}`);
+        await sleep(delays[attempt]);
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastErr;
+}
+
+/**
+ * 调用 agnes（OpenAI 兼容）生成试卷（单次）
+ */
+async function callAgnesOnce(prompt) {
   const { apiKey, baseURL, model, timeoutMs } = config.agnes;
   if (!apiKey) {
     throw new Error('服务器未配置 AGNES_AI_API_KEY');
@@ -92,7 +128,7 @@ function buildPrompt(params) {
   const {
     subject, grade, knowledge, difficulty = '中等',
     choice = 0, fill = 0, trueFalse = 0, shortAnswer = 0, calculation = 0, essay = 0,
-    durationMin = 60
+    durationMin = 60, term = ''
   } = params;
 
   // 各题型分值
@@ -121,8 +157,13 @@ function buildPrompt(params) {
     ? '\n【特别注意】这是语文试卷：所有题干、选项、答案、解析中禁止出现任何英文单词（汉语拼音除外）。'
     : '';
 
+  const guards = examQuality.gradeGuardrails(subject, grade, term);
+  const guardText = guards.length
+    ? '\n【难度与范围红线（务必逐条遵守）】\n' + guards.map(g => '- ' + g).join('\n')
+    : '';
+
   return `为「${grade}·${subject}」生成一份${difficulty}难度试卷。
-知识点：${knowledge || '该年级核心知识点'}
+知识点：${knowledge || '该年级核心知识点'}${term ? '\n册次：' + term + '（只考' + term + '已学内容）' : ''}
 时长：${durationMin}分钟。
 
 【必须严格生成的题型和数量】
@@ -131,7 +172,8 @@ ${sectionDesc || '（未选择任何题型）'}
 【命题质量要求（务必逐条落实）】
 - 每道题都必须带 "analysis" 解析字段（1~2 句，讲清解题思路或依据），不许省略。
 - 每道题答案必须唯一且绝对正确：出题后自己先验算/核对一遍；选择题 4 个选项只有一个正确，其余似是而非但明确错误，绝不许出现两个都对的选项。
-- 判断题的 answer 只能写 "对" 或 "错"；填空题 answer 写应填入的内容；只有选择题才有 options 字段。${noEnglish}
+- 判断题的 answer 只能写 "对" 或 "错"；填空题 answer 写应填入的内容；只有选择题才有 options 字段。
+- 选择题的 options 只写选项内容本身，禁止带 "A."、"A、"、"(A)" 等字母序号前缀（序号由系统统一添加）。${noEnglish}${guardText}
 
 【JSON格式】只输出JSON，不要任何其他文字：
 {
@@ -154,6 +196,70 @@ ${sectionDesc || '（未选择任何题型）'}
 }`;
 }
 
+/* ==================== 缺额补题（2026-11-15 评测修复 #5） ==================== */
+
+const TYPE_ORDER = ['choice', 'fill', 'trueFalse', 'shortAnswer', 'calculation', 'essay'];
+
+/**
+ * 质量管线丢题后，按题型缺额自动补出（每题型最多 2 轮）。
+ * 补出的题走同一条质量管线（净化→校验→盲解复核→重出/丢弃）才并入整卷。
+ * @returns {Promise<number>} 实际补入题数
+ */
+async function topUpExam(exam, effCounts, ctx, callJson) {
+  let topped = 0;
+  for (const type of TYPE_ORDER) {
+    const want = Number(effCounts[type]) || 0;
+    if (!want) continue;
+    const secOf = () => exam.sections.find(s => s.type === type);
+    let deficit = want - ((secOf() && secOf().questions) || []).length;
+    for (let round = 0; round < 2 && deficit > 0; round++) {
+      const existing = exam.sections.flatMap(s => (s.questions || []).map(q => String(q.q || '').slice(0, 30)));
+      const fragParams = {
+        subject: ctx.subject, grade: ctx.grade, knowledge: ctx.knowledge,
+        difficulty: ctx.difficulty, term: ctx.term, durationMin: 60,
+        choice: 0, fill: 0, trueFalse: 0, shortAnswer: 0, calculation: 0, essay: 0
+      };
+      fragParams[type] = deficit;
+      const prompt = buildPrompt(fragParams)
+        + '\n【补题要求】这是为同一份试卷补出的题目，不得与以下已有题目重复或雷同：\n'
+        + (existing.length ? existing.join('；') : '（无）');
+      let frag = null;
+      try { frag = await callJson(prompt); } catch (e) { break; }
+      const secIn = frag && Array.isArray(frag.sections)
+        ? frag.sections.find(s => Array.isArray(s.questions) && s.questions.length)
+        : null;
+      if (!secIn) break;
+      const fragExam = {
+        sections: [{
+          name: examQuality.TYPE_NAMES[type], type,
+          scorePer: examQuality.BASE_SCORES[type],
+          questions: secIn.questions.slice(0, deficit)
+        }]
+      };
+      try {
+        await examQuality.processExam(fragExam, ctx, callJson);
+      } catch (e) { break; /* 补题管线异常：本轮补题整批不用 */ }
+      const got = (fragExam.sections[0] && fragExam.sections[0].questions) || [];
+      if (!got.length) break;
+      let target = secOf();
+      if (!target) {
+        target = { name: examQuality.TYPE_NAMES[type], type, scorePer: examQuality.BASE_SCORES[type], questions: [] };
+        exam.sections.push(target);
+      }
+      const take = got.slice(0, deficit); // 只补缺额，不因补题产生超额
+      take.forEach(q => target.questions.push(q));
+      topped += take.length;
+      deficit -= take.length;
+    }
+  }
+  if (topped > 0) {
+    // 板块按题型标准顺序重排 + 全卷重新归一化
+    exam.sections.sort((a, b) => TYPE_ORDER.indexOf(a.type) - TYPE_ORDER.indexOf(b.type));
+    examQuality.normalizeScores(exam);
+  }
+  return topped;
+}
+
 /* ==================== 路由 ==================== */
 
 /**
@@ -166,7 +272,7 @@ router.post('/generate', async (req, res) => {
     accountId, openId = '', subject, grade,
     knowledge = '', difficulty = '中等',
     choice = 0, fill = 0, trueFalse = 0, shortAnswer = 0, calculation = 0, essay = 0,
-    durationMin = 60
+    durationMin = 60, term = ''
   } = req.body || {};
 
   // 参数校验
@@ -175,7 +281,9 @@ router.post('/generate', async (req, res) => {
   if (!GRADES.includes(grade)) return res.status(400).json({ ok: false, msg: '不支持的年级' });
   if (!DIFFICULTY.includes(difficulty)) return res.status(400).json({ ok: false, msg: '不支持的难度' });
 
-  const counts = { choice, fill, trueFalse, shortAnswer, calculation, essay };
+  // 学科净化：计算题仅限数学，非数学学科的 calculation 等量补位简答（题数总量不变）
+  const { counts, moved } = examQuality.sanitizeCountsForSubject(subject, { choice, fill, trueFalse, shortAnswer, calculation, essay });
+  const termVal = (term === '上册' || term === '下册') ? term : '';
   const totalQuestions = Object.values(counts).reduce((a, b) => a + (Number(b) || 0), 0);
   if (totalQuestions < 1) return res.status(400).json({ ok: false, msg: '请至少选择一种题型' });
   if (totalQuestions > 50) return res.status(400).json({ ok: false, msg: '题目数量过多（最多50题）' });
@@ -189,7 +297,7 @@ router.post('/generate', async (req, res) => {
       return res.status(429).json({ ok: false, msg: '今日生成已达上限（' + DAILY_LIMIT + ' 份），明天再来吧' });
     }
 
-    const prompt = buildPrompt(req.body);
+    const prompt = buildPrompt(Object.assign({}, req.body, counts, { term: termVal }));
     const exam = await callAgnes(prompt);
 
     // 校验返回结构
@@ -205,21 +313,36 @@ router.post('/generate', async (req, res) => {
     });
 
     // 质量管线：补解析 → 规则校验 → 客观题盲解复核 → 不合格重出/换题/丢弃 → 总分归一化（恒 100）
+    const ctx = { subject, grade, difficulty, knowledge, term: termVal };
     try {
-      const { report } = await examQuality.processExam(exam, {
-        subject, grade, difficulty, knowledge
-      }, (p) => callAgnes(p));
+      const { report } = await examQuality.processExam(exam, ctx, (p) => callAgnes(p));
       exam.quality = report;
       console.log('[EXAM] 质量复核完成:', JSON.stringify(report));
     } catch (qErr) {
-      // 管线异常不阻断交付，但总分归一化必须执行
+      // 管线异常不阻断交付，但选项净化与总分归一化必须执行
       console.error('[EXAM] 质量管线异常（降级归一化）:', qErr.message);
+      examQuality.cleanExamOptions(exam);
       examQuality.normalizeScores(exam);
     }
-    const remainQuestions = exam.sections.reduce((a, s) => a + (s.questions || []).length, 0);
-    if (!remainQuestions) {
+
+    // 缺额补题：管线丢弃后按题型缺额自动补出到请求数量（补不齐则如实带 missing）
+    let toppedUp = 0;
+    try {
+      toppedUp = await topUpExam(exam, counts, ctx, (p) => callAgnes(p));
+      if (exam.quality) exam.quality.toppedUp = toppedUp;
+    } catch (tErr) {
+      console.error('[EXAM] 补题异常（按实际题量交付）:', tErr.message);
+    }
+
+    const deliveredQuestions = exam.sections.reduce((a, s) => a + (s.questions || []).length, 0);
+    if (!deliveredQuestions) {
       throw new Error('试卷质量复核后无可用题目，请重试');
     }
+    exam.delivery = {
+      requested: totalQuestions, delivered: deliveredQuestions,
+      missing: Math.max(0, totalQuestions - deliveredQuestions), toppedUp,
+      crossSubjectMoved: moved, term: termVal
+    };
 
     const record = {
       id: 'exam_' + crypto.randomBytes(8).toString('hex'),
@@ -228,13 +351,17 @@ router.post('/generate', async (req, res) => {
       subject,
       grade,
       title: exam.title || (grade + '·' + subject + '试卷'),
-      config: JSON.stringify({ subject, grade, knowledge, difficulty, durationMin, counts }),
+      config: JSON.stringify({ subject, grade, knowledge, difficulty, durationMin, counts, term: termVal }),
       content: JSON.stringify(exam),
       createdAt: Date.now()
     };
     await db.createExam(record);
 
-    res.json({ ok: true, examId: record.id });
+    res.json({
+      ok: true, examId: record.id,
+      requested: totalQuestions, delivered: deliveredQuestions,
+      missing: Math.max(0, totalQuestions - deliveredQuestions)
+    });
   } catch (err) {
     console.error('[EXAM] generate error:', err.message);
     if (err.message && err.message.indexOf('AGNES') > -1) {
@@ -474,3 +601,7 @@ router.get('/:id/pdf', async (req, res) => {
 });
 
 module.exports = router;
+// 供自测使用的内部钩子（不影响路由行为）
+module.exports.buildPrompt = buildPrompt;
+module.exports.topUpExam = topUpExam;
+module.exports.isRetryableAgnesError = isRetryableAgnesError;

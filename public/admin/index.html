@@ -109,6 +109,7 @@
     <button data-tab="users">用户</button>
     <button data-tab="feedbacks">反馈</button>
     <button data-tab="posters">手抄报库</button>
+    <button data-tab="citydemand">城市需求</button>
     <button data-tab="system">系统</button>
   </nav>
   <main>
@@ -139,6 +140,14 @@
     </section>
     <section id="tab-posters">
       <div id="posterWall"></div>
+    </section>
+    <section id="tab-citydemand">
+      <div class="note">定位到未开通城市的用户会在这里记上一票（只记城市名，不含坐标）。按人次从高到低排——开通新城市时，先开票多的。</div>
+      <table>
+        <thead><tr><th>城市</th><th>需求人次</th><th>独立用户</th><th>最近一次</th></tr></thead>
+        <tbody id="cityDemandBody"></tbody>
+      </table>
+      <div class="empty hidden" id="cityDemandEmpty">还没有未开通城市的需求记录</div>
     </section>
     <section id="tab-system">
       <div id="sysBox"></div>
@@ -193,7 +202,7 @@
     var btn = e.target.closest('button[data-tab]');
     if (!btn) return;
     Array.prototype.forEach.call($('tabs').children, function (b) { b.classList.toggle('active', b === btn); });
-    ['overview', 'users', 'feedbacks', 'posters', 'system'].forEach(function (t) {
+    ['overview', 'users', 'feedbacks', 'posters', 'citydemand', 'system'].forEach(function (t) {
       $('tab-' + t).classList.toggle('active', t === btn.dataset.tab);
     });
     var tab = btn.dataset.tab;
@@ -202,6 +211,7 @@
       if (tab === 'users') loadUsers(1);
       if (tab === 'feedbacks') loadFeedbacks();
       if (tab === 'posters') loadPosters();
+      if (tab === 'citydemand') loadCityDemand();
       if (tab === 'system') loadSystem();
     }
   });
@@ -321,6 +331,22 @@
   });
 
   /* ---------- 系统 ---------- */
+  /* ---------- 周末城市需求 ---------- */
+  function loadCityDemand() {
+    api('/api/admin/city-demand').then(function (r) {
+      var rows = (r && r.data) || [];
+      var body = $('cityDemandBody');
+      body.innerHTML = '';
+      $('cityDemandEmpty').classList.toggle('hidden', rows.length > 0);
+      rows.forEach(function (row) {
+        var tr = document.createElement('tr');
+        tr.innerHTML = '<td>' + esc(row.city || '未知城市') + '</td><td>' + esc(row.hits) +
+          '</td><td>' + esc(row.users) + '</td><td>' + fmtTime(row.lastAt) + '</td>';
+        body.appendChild(tr);
+      });
+    });
+  }
+
   function loadSystem() {
     api('/api/admin/system').then(function (r) {
       if (!r.ok) { $('sysBox').innerHTML = '<div class="empty">加载失败</div>'; return; }

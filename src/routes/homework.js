@@ -64,7 +64,7 @@ function buildPrompt(subject) {
     '请仔细看这张作业照片，逐题识别并判断学生作答是否正确。',
     '',
     '只输出严格 JSON（不要任何其他文字、不要 markdown 代码块），格式如下：',
-    '{"items":[{"no":1,"stem":"题目原文（简要转写）","studentAnswer":"学生写下的答案","verdict":"correct","explanation":"一句话说明为什么对或错","confidence":0.95}]}',
+    '{"items":[{"no":1,"stem":"题目原文（简要转写）","studentAnswer":"学生写下的答案","verdict":"correct","explanation":"一句话说明为什么对或错","knowledge":"这道题考查的知识点，如两位数乘法","cause":"","confidence":0.95}]}',
     '',
     '字段要求：',
     '- no：题号，按照片中顺序从 1 开始；',
@@ -72,6 +72,8 @@ function buildPrompt(subject) {
     '- studentAnswer：学生写下的答案，看不清写空字符串；',
     '- verdict：只能是 correct（对）、wrong（错）、unsure（看不清或无法判断）；',
     '- explanation：一句话解析，面向家长说明对错原因，不超过 60 字；',
+    '- knowledge：这道题考查的知识点名称，不超过 15 字（如「两位数乘法」「周长与面积」），判断不出给空字符串；',
+    '- cause：仅在 verdict 为 wrong 时给错因建议，从「知识点未掌握」「概念混淆」「计算粗心」「审题不清」里选最贴切的一个；verdict 不是 wrong 或判断不出时给空字符串；',
     '- confidence：0 到 1 的小数，你对这道题判断的把握；',
     '看不清、题目残缺或答案缺失时 verdict 用 unsure 且 confidence 给低值，不要猜测。',
     '最多识别 30 题。'
@@ -221,7 +223,8 @@ function normalizeConfidence(v) {
   return Math.round(n * 100) / 100;
 }
 
-/** 把模型解析结果归一化为前端契约：[{no, stem, studentAnswer, verdict, explanation, confidence}] */
+/** 把模型解析结果归一化为前端契约：[{no, stem, studentAnswer, verdict, explanation, knowledge, cause, confidence}]
+ * knowledge/cause 是给家长的建议字段（知识点名/错因分类），前端归一到四类后由家长确认才落盘。 */
 function normalizeItems(parsed) {
   const raw = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.items) ? parsed.items : null);
   if (!raw) {
@@ -239,6 +242,8 @@ function normalizeItems(parsed) {
       studentAnswer: clampText(it.studentAnswer != null ? it.studentAnswer : (it.answer != null ? it.answer : it.student_answer), 200),
       verdict: normalizeVerdict(it.verdict != null ? it.verdict : (it.suggestion != null ? it.suggestion : it.result)),
       explanation: clampText(it.explanation != null ? it.explanation : (it.analysis != null ? it.analysis : it.reason), 200),
+      knowledge: clampText(it.knowledge != null ? it.knowledge : (it.knowledgePoint != null ? it.knowledgePoint : it.topic), 60),
+      cause: clampText(it.cause != null ? it.cause : (it.errorCause != null ? it.errorCause : it.mistakeType), 30),
       confidence: normalizeConfidence(it.confidence)
     });
   });

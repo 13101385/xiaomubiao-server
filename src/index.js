@@ -84,6 +84,8 @@ app.use('/api/exam', examRoutes);
 app.use('/api/poster', posterRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/reminder', reminderRoutes); app.use('/admin', express.static(path.join(__dirname, '..', 'public', 'admin'))); app.use('/api/admin', adminRoutes); app.use('/api', feedbackRoutes);
+// 睡前故事音频静态托管：story-audio/<故事id>.mp3（AI 合成语音，文件带 ID3 标识）
+app.use('/story-audio', express.static(path.join(__dirname, '..', 'story-audio'), { maxAge: '7d', immutable: true }));
 
 // 错误处理
 app.use((err, req, res, next) => {

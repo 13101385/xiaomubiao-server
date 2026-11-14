@@ -12,6 +12,8 @@
  * - 限流：同一账号 1 小时最多 20 次（与 feedback 同口径），无账号按来源 IP 计；内存计数。
  * - 依赖：优先火山方舟（环境变量 ARK_API_KEY，豆包视觉，base64 直传不需要临时图）；
  *   未配置 ARK_API_KEY 时回退 Agnes（环境变量 AGNES_AI_API_KEY，config.agnes，走临时图 URL）。
+ * - 兜底（2026-11-14 用户要求）：方舟运行时任何失败（额度耗尽/限流/服务异常/坏 JSON）
+ *   自动回落 Agnes 再试一次，两家都失败才向用户报错；响应 data.provider 标明实际提供方。
  * - 本文件不依赖 db，可独立挂载自测；两家调用均可经 __set*VisionCaller 注入 mock。
  */
 const express = require('express');
@@ -315,6 +317,30 @@ function publicBase(req) {
   return proto + '://' + host;
 }
 
+/* ==================== 提供方执行（含兜底） ==================== */
+
+/** 方舟批改：图片 base64 直传 → 归一化 items */
+async function gradeViaArk(buf, ext, subject) {
+  const dataUrl = 'data:image/' + (ext === 'png' ? 'png' : 'jpeg') + ';base64,' + buf.toString('base64');
+  const text = await arkVisionCaller(dataUrl, subject);
+  return normalizeItems(extractJson(text));
+}
+
+/** Agnes 批改：照片落临时目录换公网 URL，处理完（无论成败）即删 → 归一化 items */
+async function gradeViaAgnes(buf, ext, req, subject) {
+  ensureTmpDir();
+  const name = crypto.randomBytes(16).toString('hex') + '.' + ext;
+  const tmpFile = path.join(TMP_DIR, name);
+  fs.writeFileSync(tmpFile, buf);
+  try {
+    const imageUrl = publicBase(req) + '/api/homework/tmp/' + name;
+    const text = await agnesVisionCaller(imageUrl, subject);
+    return normalizeItems(extractJson(text));
+  } finally {
+    fs.unlink(tmpFile, () => {});
+  }
+}
+
 /* ==================== 路由 ==================== */
 
 /** 临时图出口：仅供 Agnes 拉取本次照片，文件名随机不可猜测，过期即删 */
@@ -356,26 +382,26 @@ router.post('/grade-photo', async (req, res) => {
     return res.status(429).json({ ok: false, code: 'RATE_LIMITED', msg: '拍照批改太频繁了，请稍后再试' });
   }
 
-  let tmpFile = '';
   try {
     sweepTmp();
     const { buf, ext } = decodeImage(body.imageBase64);
-    let text;
+    let items = null;
+    let usedProvider = '';
     if (visionProvider() === 'ark') {
-      // 方舟支持 base64 直传，照片不落盘
-      const dataUrl = 'data:image/' + (ext === 'png' ? 'png' : 'jpeg') + ';base64,' + buf.toString('base64');
-      text = await arkVisionCaller(dataUrl, subject);
+      try {
+        items = await gradeViaArk(buf, ext, subject);
+        usedProvider = 'ark';
+      } catch (arkErr) {
+        // 兜底：方舟任何失败（额度耗尽/限流/异常/坏 JSON）自动回落 Agnes 再试
+        console.error('[HOMEWORK] ark failed, fallback to agnes:', (arkErr && (arkErr.code || arkErr.message)) || 'unknown');
+        items = await gradeViaAgnes(buf, ext, req, subject);
+        usedProvider = 'agnes';
+      }
     } else {
-      // Agnes 需要公网 URL：照片落临时目录，请求结束即删
-      ensureTmpDir();
-      const name = crypto.randomBytes(16).toString('hex') + '.' + ext;
-      tmpFile = path.join(TMP_DIR, name);
-      fs.writeFileSync(tmpFile, buf);
-      const imageUrl = publicBase(req) + '/api/homework/tmp/' + name;
-      text = await agnesVisionCaller(imageUrl, subject);
+      items = await gradeViaAgnes(buf, ext, req, subject);
+      usedProvider = 'agnes';
     }
-    const items = normalizeItems(extractJson(text));
-    res.json({ ok: true, data: { items, count: items.length } });
+    res.json({ ok: true, data: { items, count: items.length, provider: usedProvider } });
   } catch (err) {
     const code = err && err.code ? err.code : '';
     if (code === 'PARAM') {
@@ -394,8 +420,6 @@ router.post('/grade-photo', async (req, res) => {
     }
     console.error('[HOMEWORK] grade-photo error:', err && err.message);
     return res.status(502).json({ ok: false, code: 'AI_FAILED', msg: 'AI 批改失败了，请稍后重试或用手动批改' });
-  } finally {
-    if (tmpFile) fs.unlink(tmpFile, () => {});
   }
 });
 

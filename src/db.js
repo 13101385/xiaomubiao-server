@@ -414,14 +414,17 @@ function listPosters(accountId) {
 }
 
 /**
- * 公共模板成品库：不区分账号，优先返回已合成文字的成品，再按时间倒序
+ * 公共模板成品库：只出官方账号的预生成成品（与 admin.js 的 OFFICIAL_ACCOUNT_ID 同口径，
+ * 可用 env OFFICIAL_ACCOUNT_ID 覆盖）。历史上不按账号过滤，导致用户自生成/早期历史记录
+ * （如含「书写小贴士」残留的旧版式）混入模板页展示；用户自己的作品走 listPosters 按账号读取，不受此过滤影响。
+ * 排序：优先已合成文字的成品，再按时间倒序
  */
 function listLibraryPosters(theme, limit) {
   return new Promise((resolve, reject) => {
     const n = Math.max(1, Math.min(parseInt(limit, 10) || 12, 50));
     db.all(
-      "SELECT id, theme, grade, title, source, image_url, composed_url, created_at FROM posters WHERE theme = ? AND source = 'image' AND image_url != '' ORDER BY (composed_url != '') DESC, created_at DESC LIMIT " + n,
-      [theme],
+      "SELECT id, theme, grade, title, source, image_url, composed_url, created_at FROM posters WHERE theme = ? AND source = 'image' AND image_url != '' AND account_id = ? ORDER BY (composed_url != '') DESC, created_at DESC LIMIT " + n,
+      [theme, process.env.OFFICIAL_ACCOUNT_ID || 'acc_16yue1j'],
       (err, rows) => {
         if (err) reject(err);
         else resolve((rows || []).map(r => ({ ...r, imageUrl: r.image_url || '', composedUrl: r.composed_url || '' })));

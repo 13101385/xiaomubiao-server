@@ -35,9 +35,20 @@ function localTodayStr() {
   return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
 }
 
+// 与前端同口径：未结束，且已开始或 14 天内即将开始（演出提前展示方便订票）
+const EVENT_UPCOMING_DAYS = 14;
+function addDaysStr(dateStr, days) {
+  const parts = dateStr.split('-');
+  const ms = Date.UTC(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])) + days * 86400000;
+  const d = new Date(ms);
+  const p = (n) => (n < 10 ? '0' : '') + n;
+  return d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate());
+}
 function isEventActive(ev, todayStr) {
   const t = todayStr || localTodayStr();
-  return (!ev.startDate || ev.startDate <= t) && (!ev.endDate || ev.endDate >= t);
+  if (ev.endDate && ev.endDate < t) return false;
+  if (!ev.startDate || ev.startDate <= t) return true;
+  return ev.startDate <= addDaysStr(t, EVENT_UPCOMING_DAYS);
 }
 
 router.get('/all', (req, res) => {

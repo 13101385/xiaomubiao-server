@@ -54,6 +54,122 @@ if (!isNaN(n) && n >= 1 && n <= optionCount) return n - 1;
 return -1;
 }
 
+/* ==================== 选项前缀净化（2026-11-15 评测修复 #2） ==================== */
+
+/**
+ * 剥离选项文本自带的字母序号前缀（「A. 」「A、」「(A)」「（A）」等）。
+ * 渲染层（详情页/PDF/HTML）会统一再加一遍前缀，不剥离就会出现「A. A. 山」。
+ * 只剥带分隔符的前缀，英文选项正文（如 "A cat"）不受影响。
+ */
+function stripOptionPrefix(text) {
+let t = String(text == null? '': text);
+for (let n = 0; n < 2; n++) {
+const m = t.match(/^\s*(?:[（(]\s*[A-Da-d]\s*[)）]\s*[、．.·]?\s*|[A-Da-d]\s*[、．.]\s*)/);
+if (!m || t.slice(m[0].length).trim() === '') break;
+t = t.slice(m[0].length);
+}
+return t.trim();
+}
+
+/** 就地净化整卷所有选择题 options（幂等） */
+function cleanExamOptions(exam) {
+(exam.sections || []).forEach(sec => {
+(sec.questions || []).forEach(q => {
+if (Array.isArray(q.options)) q.options = q.options.map(stripOptionPrefix);
+});
+});
+return exam;
+}
+
+/* ==================== 题型配比学科净化（2026-11-15 评测修复 #4） ==================== */
+
+const COUNT_KEYS = ['choice', 'fill', 'trueFalse', 'shortAnswer', 'calculation', 'essay'];
+
+/**
+ * 计算题仅限数学学科：非数学学科收到 calculation 时剔除并等量补位到简答题
+ * （题数总量不变，家长无感知缺额）。返回 { counts, moved }。
+ */
+function sanitizeCountsForSubject(subject, counts) {
+const out = {};
+COUNT_KEYS.forEach(k => { out[k] = Math.max(0, Number(counts && counts[k]) || 0);});
+let moved = 0;
+if (subject!== '数学' && out.calculation > 0) {
+moved = out.calculation;
+out.shortAnswer += moved;
+out.calculation = 0;
+}
+return { counts: out, moved};
+}
+
+/* ==================== 年级/册次难度护栏（2026-11-15 评测修复 #3/#5） ==================== */
+
+const GRADE_NUM = { '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6};
+function gradeBandOf(grade) {
+const m = String(grade || '').match(/([一二三四五六])年级/);
+return m? (GRADE_NUM[m[1]] || 0): 0;
+}
+
+/**
+ * 按 学科×年级×册次 生成提示词红线（返回字符串数组）。
+ * 依据课标常识：低年级英语无时态语法、低年级写作量分级、册次内容不得超前。
+ */
+function gradeGuardrails(subject, grade, term) {
+const lines = [];
+const band = gradeBandOf(grade);
+if (term === '上册') {
+lines.push('本卷只考【上册】已经学过的内容，严禁出现下册/下学期才学的内容（如下册才学的运算、课文与知识点）。');
+} else if (term === '下册') {
+lines.push('本卷按【下册】进度命题（可少量复习上册），严禁出现下一学年才学的内容。');
+}
+if (subject === '英语') {
+if (band === 1) {
+lines.push('一年级英语只考听说词汇、字母和简单口语：禁止任何时态语法（现在进行时、一般过去时、第三人称单数变化等），禁止 be 动词/动词形式填空类语法题；判断题只判断内容对错、不考语法对错；简答题参考答案最多 1 句或单词/短语级，禁止「至少写 N 句」类写作要求。');
+} else if (band === 2) {
+lines.push('二年级英语不考任何时态语法与动词变形；简答题参考答案不超过 2 句。');
+} else if (band === 3) {
+lines.push('三年级英语不考一般过去时、将来时，不考名词性物主代词（hers/theirs 等）四年级以后内容；简答题参考答案不超过 3 句。');
+} else if (band > 0) {
+lines.push('英语命题不得超出本年级课标的语法与词汇范围，不得把高年级的成段写作要求下放到本年级。');
+}
+}
+if (subject === '语文' && band > 0 && band <= 2) {
+lines.push('涉及笔顺/笔画顺序的题目：必须按《现代汉语通用字笔顺规范》逐笔核对后再写答案；解析中如写出笔顺，必须与答案完全一致，不得凭印象编造。');
+}
+return lines;
+}
+
+/* ==================== 笔顺工具（2026-11-15 评测修复 #6） ==================== */
+
+/* 笔画名称（长名在前，贪心最长匹配） */
+const STROKE_NAMES = ['竖折折钩', '横折折钩', '横折弯钩',
+'竖弯钩', '横折钩', '竖折钩', '横折弯', '横撇', '竖钩', '竖弯', '弯钩', '卧钩', '斜钩', '撇折', '撇点', '横折', '竖折', '横钩',
+'横', '竖', '撇', '捺', '点', '提', '折', '钩'];
+
+/**
+ * 从文本中抽取笔顺序列（笔画全称数组）。
+ * 只取「笔顺」二字之后、句号/分号之前的一段，避免正文里散落的横/竖等字误触发。
+ */
+function strokeSequence(text) {
+let s = String(text || '');
+const idx = s.indexOf('笔顺');
+if (idx >= 0) s = s.slice(idx + 2);
+s = s.split(/[。；;！!？?\n]/)[0];
+const seq = [];
+let i = 0;
+while (i < s.length) {
+const hit = STROKE_NAMES.find(n => s.startsWith(n, i));
+if (hit) { seq.push(hit); i += hit.length;}
+else i++;
+}
+return seq;
+}
+
+/** 是否笔顺/笔画顺序类题目 */
+function isStrokeQuestion(q) {
+if (!q) return false;
+return /笔顺|笔画顺序|书写顺序/.test(String(q.q || '') + ' ' + String(q.answer || ''));
+}
+
 /* ==================== 语文英文筛查 ==================== */
 
 /* 汉语拼音音节表（无声调），语文卷出现这些拉丁字母组合视为拼音、放行 */
@@ -193,6 +309,14 @@ if (!String(q.answer || '').trim()) issues.push('缺少参考答案');
 if (opts && opts.subject === '语文' && q && hasEnglishViolation(q)) {
 issues.push('语文题混入英文单词');
 }
+if (opts && opts.subject === '语文' && q && isStrokeQuestion(q)) {
+// 笔顺题：答案与解析若都写了笔顺序列，必须逐笔一致（防解析编造笔顺，评测 P2）
+const aSeq = strokeSequence(q.answer);
+const anSeq = strokeSequence(q.analysis);
+if (aSeq.length >= 2 && anSeq.length >= 2 && aSeq.join('/')!== anSeq.join('/')) {
+issues.push('解析中的笔顺与答案不一致');
+}
+}
 return issues;
 }
 
@@ -251,6 +375,7 @@ return `你是资深${ctx.grade}${ctx.subject}教师。请独立解答下面每�
 - 选择题：给出唯一正确选项字母；如果有两个或以上选项都正确，answer 写成 "A,C" 这样的多字母形式（如实标注双解）。
 - 判断题：answer 写 "对" 或 "错"。
 - 填空题：answer 写应填入的内容（只要核心答案，不要单位赘述之外的解释）。
+- 笔顺/笔画顺序题：按《现代汉语通用字笔顺规范》独立写出完整笔顺序列（笔画全称，如：竖钩、横撇、撇、捺），不要只写画数。
 
 只输出严格 JSON，不要任何其他文字：
 { "results": [ { "i": 1, "answer": "B"}, { "i": 2, "answer": "对"}]}
@@ -263,6 +388,13 @@ ${lines}`;
 function verifyOne(item, solved) {
 const q = item.q;
 if (solved == null || solved === '') return false;
+if (item.stroke) {
+// 笔顺题（填空/简答/计算等自由文本题型）：逐笔比对笔顺序列；抽不出序列视为未复核（null）
+const aSeq = strokeSequence(q.answer);
+const bSeq = strokeSequence(solved);
+if (aSeq.length < 2 || bSeq.length < 2) return null;
+return aSeq.join('/') === bSeq.join('/');
+}
 if (item.type === 'choice') {
 const letters = String(solved).toUpperCase().match(/[A-Z]/g) || [];
 if (letters.length!== 1) return false; // 双解/无解
@@ -352,6 +484,8 @@ const typeName = TYPE_NAMES[spec.type] || spec.type;
 const noEnglish = ctx.subject === '语文'
 ? '\n这是语文试卷：题干、选项、答案、解析中禁止出现任何英文单词（汉语拼音除外）。'
 : '';
+const guards = gradeGuardrails(ctx.subject, ctx.grade, ctx.term);
+const guardText = guards.length? '\n【难度与范围红线】\n' + guards.map(g => '- ' + g).join('\n'): '';
 const shape = spec.type === 'choice'
 ? '{ "q": "题目", "options": ["选项1","选项2","选项3","选项4"], "answer": "A", "analysis": "解析"}'
 : '{ "q": "题目", "answer": "参考答案", "analysis": "解析"}';
@@ -359,7 +493,8 @@ return `你是资深${ctx.grade}${ctx.subject}命题教师。为「${ctx.grade}�
 上一道同类题不合格，原因：${avoidReason}。请换一道题（不要与常见题重复），确保：
 - 答案唯一且绝对正确（自己先验算一遍）；选择题 4 个选项、只有一个正确，其余选项要似是而非但明确错误；
 - 必须带 analysis 解析（1~2 句讲清思路）；
-- 判断题 answer 只能写 "对" 或 "错"。${noEnglish}
+- 选择题 options 只写选项内容本身，禁止带 "A."、"A、"、"(A)" 等字母序号前缀；
+- 判断题 answer 只能写 "对" 或 "错"。${noEnglish}${guardText}
 只输出严格 JSON（单个题目对象），不要任何其他文字：
 ${shape}`;
 }
@@ -381,7 +516,9 @@ return q;
 * @returns {Promise<{ exam, report}>}
 */
 async function processExam(exam, ctx, callJson) {
-const report = { verified: 0, verifySkipped: 0, regenerated: 0, replaced: 0, dropped: 0, analysisFilled: 0, issues: []};
+const report = { verified: 0, verifySkipped: 0, regenerated: 0, replaced: 0, dropped: 0, analysisFilled: 0, strokeChecked: 0, issues: []};
+// 0) 选项前缀净化（幂等，先于一切校验/复核）
+cleanExamOptions(exam);
 const allItems = [];
 (exam.sections || []).forEach(sec => {
 (sec.questions || []).forEach(q => allItems.push({ type: sec.type, q, sec}));
@@ -390,8 +527,12 @@ const allItems = [];
 // 1) 先补齐缺失解析（减少无谓重出）
 report.analysisFilled = await fillMissingAnalysis(allItems, callJson, ctx);
 
-// 2) 客观题盲解复核
-const objective = allItems.filter(it => OBJECTIVE_TYPES.includes(it.type));
+// 2) 客观题盲解复核（语文笔顺题——含计算/简答等自由文本题型——一并纳入，评测 P1 漏检教训）
+const objective = allItems.filter(it => OBJECTIVE_TYPES.includes(it.type)
+|| (ctx.subject === '语文' && isStrokeQuestion(it.q)));
+objective.forEach(it => {
+if (!OBJECTIVE_TYPES.includes(it.type)) { it.stroke = true; report.strokeChecked++;}
+});
 const verdicts = await verifyObjectiveBatch(objective, callJson, ctx);
 const badReason = new Map(); // item -> reason
 objective.forEach(it => {
@@ -417,8 +558,8 @@ try {
 const nq = await regenQuestion(item, callJson, ctx, lastReason);
 const issues = structuralIssues(nq, item.type, { subject: ctx.subject});
 if (issues.length) { lastReason = issues.join('；'); continue;}
-if (OBJECTIVE_TYPES.includes(item.type)) {
-const v = await verifyObjectiveBatch([{ type: item.type, q: nq, ref: nq}], callJson, ctx);
+if (OBJECTIVE_TYPES.includes(item.type) || item.stroke) {
+const v = await verifyObjectiveBatch([{ type: item.type, q: nq, ref: nq, stroke: !!item.stroke }], callJson, ctx);
 if (v.get(nq)!== true) { lastReason = '重出题盲解复核未通过'; continue;}
 }
 fixed = nq;
@@ -431,8 +572,8 @@ try {
 const nq = await regenQuestion(item, callJson, ctx, lastReason + '。请换一个考法/情境重新命题');
 const issues = structuralIssues(nq, item.type, { subject: ctx.subject});
 let ok =!issues.length;
-if (ok && OBJECTIVE_TYPES.includes(item.type)) {
-const v = await verifyObjectiveBatch([{ type: item.type, q: nq, ref: nq}], callJson, ctx);
+if (ok && (OBJECTIVE_TYPES.includes(item.type) || item.stroke)) {
+const v = await verifyObjectiveBatch([{ type: item.type, q: nq, ref: nq, stroke: !!item.stroke }], callJson, ctx);
 ok = v.get(nq) === true;
 }
 if (ok) { fixed = nq; report.replaced++;}
@@ -459,6 +600,9 @@ return { exam, report};
 module.exports = {
 TYPE_NAMES, BASE_SCORES,
 normText, normTrueFalse, normChoiceIndex,
+stripOptionPrefix, cleanExamOptions,
+sanitizeCountsForSubject, gradeGuardrails, gradeBandOf,
+strokeSequence, isStrokeQuestion,
 findEnglishWords, hasEnglishViolation,
 evalExpr, checkClosestQuestion,
 structuralIssues, normalizeScores,

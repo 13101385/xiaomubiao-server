@@ -360,7 +360,8 @@ router.post('/generate', async (req, res) => {
 /**
  * POST /api/poster/generate-image
  * AI 文生图：直接生成手抄报成品图片并存储
- * body: { accountId, openId?, theme, grade, style?, custom? }
+ * body: { accountId, openId?, theme, grade, style?, custom?, mode?, size?, dryRun? }
+ * dryRun：评测专用开关，仅评测白名单账号（eval_ai_quality）+ dryRun===true 时跳过全部落库
  */
 router.post('/generate-image', async (req, res) => {
   const {
@@ -376,6 +377,11 @@ router.post('/generate-image', async (req, res) => {
   if (String(custom).length > MAX_CUSTOM_LEN) return res.status(400).json({ ok: false, msg: '自定义要求过长（最多' + MAX_CUSTOM_LEN + '字）' });
   if (String(style).length > MAX_STYLE_LEN) return res.status(400).json({ ok: false, msg: '风格描述过长' });
 
+  /* 评测专用 dryRun（AI 质量官抽检）：仅当 dryRun 严格 === true 且 accountId 为评测白名单账号时生效——
+   * 完整走现行生成链路（提示词/Agnes 生图/文字方案/服务端合成照旧），但跳过全部 db 写入，
+   * 成品图以 base64 随响应返回。其他任何账号带 dryRun 一律忽略该参数、按正常流程落库，防滥用。 */
+  const isDryRun = !!(req.body && req.body.dryRun === true) && accountId === 'eval_ai_quality';
+
   const mode = (req.body && req.body.mode) || '';
 
   try {
@@ -385,6 +391,10 @@ router.post('/generate-image', async (req, res) => {
       const imgSize = req.body.size === 'landscape' ? '1536x1024'
         : (req.body.size === 'square' ? '1024x1024' : '');
       const url = await callAgnesImage(prompt, imgSize);
+      if (isDryRun) {
+        // dryRun：不落库，原图 URL 直接返回供评测看图
+        return res.json({ ok: true, dryRun: true, imageUrl: url });
+      }
       const record = {
         id: 'poster_' + crypto.randomBytes(8).toString('hex'),
         accountId,
@@ -435,7 +445,7 @@ router.post('/generate-image', async (req, res) => {
     if (heroBuf.length < 100) throw new Error('插画下载失败，请重试');
 
     const record = {
-      id: 'poster_' + crypto.randomBytes(8).toString('hex'),
+      id: isDryRun ? 'eval_' + crypto.randomBytes(8).toString('hex') : 'poster_' + crypto.randomBytes(8).toString('hex'),
       accountId,
       openId,
       theme: String(theme).trim(),
@@ -450,17 +460,26 @@ router.post('/generate-image', async (req, res) => {
       imageUrl: url,
       createdAt: Date.now()
     };
-    await db.createPoster(record);
+    if (!isDryRun) {
+      await db.createPoster(record);
+    }
 
     try {
       const { buffer, meta } = await composePosterImage({ plan, hero: heroBuf, theme: record.theme });
+      if (isDryRun) {
+        // dryRun：不走 storeComposedImage（它会 putBlob + updatePoster 回写记录），成品直接 base64 返回
+        console.log('[POSTER] dryRun 合成完成（不落库）:', record.id, JSON.stringify(meta));
+        return res.json({ ok: true, dryRun: true, composedBase64: buffer.toString('base64'), imageUrl: url });
+      }
       const composedUrl = await storeComposedImage(db, record.id, accountId, buffer);
       console.log('[POSTER] 服务端合成完成:', record.id, JSON.stringify(meta));
       return res.json({ ok: true, posterId: record.id, composedUrl });
     } catch (composeErr) {
-      // 合成失败不留半成品记录，避免用户拿到无字图
-      console.error('[POSTER] 服务端合成失败，删除记录:', composeErr.message);
-      await db.deletePoster(record.id, accountId).catch(() => {});
+      // 合成失败不留半成品记录，避免用户拿到无字图（dryRun 本无记录可回滚，跳过删除）
+      console.error('[POSTER] 服务端合成失败' + (isDryRun ? '（dryRun，无回滚）' : '，删除记录') + ':', composeErr.message);
+      if (!isDryRun) {
+        await db.deletePoster(record.id, accountId).catch(() => {});
+      }
       throw new Error('手抄报合成失败，请重试');
     }
   } catch (err) {

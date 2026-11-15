@@ -56,9 +56,9 @@ function cloudPill(ctx, cx, cy, w, h, color) {
 ctx.save();
 ctx.fillStyle = color;
 R.roundRect(ctx, cx - w / 2, cy - h / 2, w, h, h / 2); ctx.fill();
-const bumps = [[-0.30, 46], [-0.10, 58], [0.12, 52], [0.30, 42]];
+const bumps = [[-0.30, 26], [-0.10, 32], [0.12, 30], [0.30, 24]];
 for (const [fx, r] of bumps) {
-ctx.beginPath(); ctx.arc(cx + fx * w, cy - h / 2 + 6, r, 0, Math.PI * 2); ctx.fill();
+ctx.beginPath(); ctx.arc(cx + fx * w, cy - h / 2 + 10, r, 0, Math.PI * 2); ctx.fill();
 }
 ctx.restore();
 }
@@ -82,6 +82,28 @@ const ok = sections.every(sec => R.measureSection(ctx, sec, innerW, px).total <=
 if (ok) return { px, trimmed: false};
 }
 return { px: 20, trimmed: true};
+}
+
+/* ---------- 板块标题适配：测宽 → 缩字号 → 换行，绝不截断、绝不压出框外 ----------
+* 原实现固定 41px 单行直绘，长标题在两栏窄卡里末字被裁（2026-11-15 评测实锤：防溺水·六年级 4 个标题全溢出）。
+* 口径：先按原字号 41px 测宽，超宽逐级缩到下限 26px；下限仍超宽则换行（最多 2 行）；
+* 极端长标题 2 行仍放不下时继续缩字号直至可容纳（兜底下限 16px），任何情况不截断标题文字。 */
+const TITLE_PX = 41, TITLE_MIN_PX = 26, TITLE_ABS_MIN_PX = 16;
+function fitSectionTitle(ctx, rawTitle, availW) {
+const title = R.Q(rawTitle || '');
+let px = TITLE_PX;
+R.setFont(ctx, px, true);
+if (ctx.measureText(title).width <= availW) return { lines: [title], px};
+while (px > TITLE_MIN_PX) {
+px -= 2; R.setFont(ctx, px, true);
+if (ctx.measureText(title).width <= availW) return { lines: [title], px};
+}
+for (;;) {
+R.setFont(ctx, px, true);
+const lines = R.wrapText(ctx, title, availW);
+if (lines.length <= 2 || px <= TITLE_ABS_MIN_PX) return { lines, px};
+px -= 2;
+}
 }
 
 /**
@@ -138,8 +160,8 @@ ctx.save();
 heroPath(ctx, hx, hy, hw, hh, 34, 30);
 ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 10; ctx.stroke();
 ctx.restore();
-drawLace(ctx, motif, hx + 66, hy + hh + 62, pal.main, pal.accent);
-drawLace(ctx, motif, hx + hw - 120, hy + hh + 62, pal.accent, pal.main);
+drawLace(ctx, motif, hx + 66, hy + hh + 146, pal.main, pal.accent);
+drawLace(ctx, motif, hx + hw - 120, hy + hh + 146, pal.accent, pal.main);
 
 /* ---- 云朵标题框（横跨插画与正文） ---- */
 const title = R.Q(tpl.title || tpl.theme);
@@ -148,7 +170,7 @@ R.setFont(ctx, tPx, true);
 while (ctx.measureText(title).width > 900 && tPx > 54) { tPx -= 4; R.setFont(ctx, tPx, true);}
 const titleW = ctx.measureText(title).width;
 const cloudW = Math.min(1030, titleW + 190);
-const cloudH = 158, cloudCY = hy + hh + 28;
+const cloudH = 150, cloudCY = hy + hh + 112;
 ctx.save();
 cloudPill(ctx, W / 2 + 6, cloudCY + 10, cloudW, cloudH, 'rgba(31,38,52,0.16)');
 ctx.restore();
@@ -163,21 +185,29 @@ ctx.fillText(tpl.subtitle, W / 2, cloudCY + 52);
 }
 
 /* ---- 正文板块：错落圆角卡 + 圆形图标徽章（动态行列） ---- */
-const gridTop = cloudCY + cloudH / 2 + 30;
+const gridTop = cloudCY + cloudH / 2 + 24;
 // 页脚条带 = 装饰禁区：[footerDividerY, H-54] 内只许分割线与班级/姓名文字
 const footerDividerY = H - 122;
-const tipsReserve = tpl.writeTips? 98: 0;
+const tipsReserve = 0; // 整改 2026-11-14：成品图须整张即手抄报正文（可直接下载交作业），禁止书写小贴士/装饰建议等非正文板块
 const gridBottom = footerDividerY - tipsReserve - 14;
 const gapX = 28, gapY = 24;
 const stagger = rows >= 3? 0: 18;
 const cardW = cols === 1? hw: (hw - gapX) / 2;
 const cardH = (gridBottom - gridTop - gapY * (rows - 1) - stagger) / rows;
 const padX = 28, headH = 70;
+// 每卡标题先行适配（测宽/缩字号/换行）：标题可用宽 = 卡宽 - 左侧徽章占位 100 - 右内边距 padX；
+// 换行标题的卡相应加高头部（headHs），正文字号适配与绘制都按各自头部高走，布局不错位
+const titleLayouts = cards.map((sec, i) => {
+const span = (cols === 2 && i === n - 1 && n % 2 === 1)? 2: 1;
+const w = span === 2? hw: cardW;
+return fitSectionTitle(ctx, sec.title, w - 100 - padX);
+});
+const headHs = titleLayouts.map(t => t.lines.length <= 1? headH: Math.max(98, Math.ceil(t.lines.length * t.px * 1.25) + 36));
 // 每张卡按自身宽度做字号适配（通栏卡更宽，可用更大字号；取全体最小保证统一）
 const fits = cards.map((sec, i) => {
 const span = (cols === 2 && i === n - 1 && n % 2 === 1)? 2: 1;
 const w = span === 2? hw: cardW;
-return fitBodySizeV2(ctx, [sec], w - padX * 2, cardH - headH - 14);
+return fitBodySizeV2(ctx, [sec], w - padX * 2, cardH - headHs[i] - 14);
 });
 const bodyPx = Math.min(...fits.map(f => f.px));
 let droppedTotal = 0;
@@ -190,7 +220,7 @@ const w = spanFull? hw: cardW;
 const cx = spanFull? hx: hx + col * (cardW + gapX);
 const cy = gridTop + row * (cardH + gapY) + (col === 1 && rows < 3? stagger: 0);
 const innerW = w - padX * 2;
-const innerH = cardH - headH - 14;
+const innerH = cardH - headHs[i] - 14;
 const headColor = i % 2 === 0? pal.mainDeep: pal.accentDeep;
 ctx.fillStyle = 'rgba(31,38,52,0.10)';
 R.roundRect(ctx, cx + 7, cy + 10, w, cardH, 34); ctx.fill();
@@ -203,37 +233,30 @@ ctx.beginPath(); ctx.arc(cx + 46, cy + 42, 40, 0, Math.PI * 2); ctx.fill();
 ctx.strokeStyle = '#FFFFFF'; ctx.lineWidth = 5;
 ctx.beginPath(); ctx.arc(cx + 46, cy + 42, 40, 0, Math.PI * 2); ctx.stroke();
 R.drawBadgeIcon(ctx, sec.icon, i, cx + 46, cy + 42, 50, '#FFFFFF');
-R.setFont(ctx, 41, true);
+const tl = titleLayouts[i];
+R.setFont(ctx, tl.px, true);
 ctx.fillStyle = headColor;
 ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-ctx.fillText(R.Q(sec.title || ''), cx + 100, cy + 44);
+if (tl.lines.length <= 1) {
+ctx.fillText(tl.lines[0], cx + 100, cy + 44);
+} else {
+const lh = tl.px * 1.25;
+const centerY = cy + (headHs[i] - 8) / 2;
+tl.lines.forEach((ln, li) => ctx.fillText(ln, cx + 100, centerY + (li - (tl.lines.length - 1) / 2) * lh));
+}
 ctx.save();
 ctx.strokeStyle = headColor; ctx.lineWidth = 5;
 ctx.beginPath();
-const uw = 118, ux = cx + 102, uy = cy + headH - 8;
+const uw = 118, ux = cx + 102, uy = cy + headHs[i] - 8;
 for (let x = 0; x <= uw; x += 4) {
 const yy = uy + Math.sin((x / uw) * Math.PI * 2) * 4;
 x === 0? ctx.moveTo(ux + x, yy): ctx.lineTo(ux + x, yy);
 }
 ctx.stroke(); ctx.restore();
-const r = R.drawSectionBody(ctx, sec, cx + padX, cy + headH + 10, innerW, bodyPx, pal, innerH);
+const r = R.drawSectionBody(ctx, sec, cx + padX, cy + headHs[i] + 10, innerW, bodyPx, pal, innerH);
 droppedTotal += r.dropped;
 });
 
-/* ---- 书写小贴士缎带 ---- */
-if (tpl.writeTips) {
-const tY = gridBottom + 14;
-ctx.fillStyle = R.mix(pal.main, '#FFFFFF', 0.88);
-R.roundRect(ctx, hx, tY, hw, 84, 20); ctx.fill();
-ctx.strokeStyle = R.mix(pal.main, '#FFFFFF', 0.45); ctx.lineWidth = 2;
-R.roundRect(ctx, hx, tY, hw, 84, 20); ctx.stroke();
-R.drawEmoji(ctx, '✏️', hx + 46, tY + 42, 44, pal.mainDeep);
-R.setFont(ctx, 26, false);
-ctx.fillStyle = R.INK;
-ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-const lines = R.wrapText(ctx, '书写小贴士：' + R.Q(tpl.writeTips), hw - 130).slice(0, 2);
-lines.forEach((ln, i) => ctx.fillText(ln, hx + 84, tY + 42 + (i - (lines.length - 1) / 2) * 35));
-}
 
 /* ---- 页脚（无品牌，仅班级/姓名；条带内零装饰） ---- */
 const fy = H - 86;
@@ -249,4 +272,4 @@ ctx.restore();
 return { canvas, meta: { bodyPx, dropped: droppedTotal, layout: 'hero-v2-runtime', cards: n, rows, cols}};
 }
 
-module.exports = { renderPosterV2, toCards, MAX_GRID_SECTIONS};
+module.exports = { renderPosterV2, toCards, MAX_GRID_SECTIONS, fitSectionTitle};

@@ -133,8 +133,10 @@ function setFont(ctx, px, bold) {
   ctx.font = `${bold ? 'bold ' : ''}${px}px ${FONT}`;
 }
 
-/** 计算一个板块在给定正文字号下需要的高度（不含卡片内边距） */
-function measureSection(ctx, sec, innerW, bodyPx) {
+/** 计算一个板块在给定正文字号下需要的高度（不含卡片内边距）
+ * lineScale：行距缩放（默认 1 = 原行高因子 正文 1.52 / 要点 1.46；<1 时行距等比收紧，
+ * 供 v2 版式在小字号下仍放不下时进一步压缩行距；测高与绘制必须传同一值） */
+function measureSection(ctx, sec, innerW, bodyPx, lineScale = 1) {
   setFont(ctx, bodyPx, false);
   const contentLines = wrapText(ctx, Q(sec.content || ''), innerW);
   const bulletPx = Math.round(bodyPx * 0.94);
@@ -144,8 +146,8 @@ function measureSection(ctx, sec, innerW, bodyPx) {
   for (const b of (sec.bullets || [])) {
     bulletLines += wrapText(ctx, Q(b), innerW - indent).length;
   }
-  const contentH = contentLines.length * bodyPx * 1.52;
-  const bulletH = bulletLines * bulletPx * 1.46;
+  const contentH = contentLines.length * bodyPx * 1.52 * lineScale;
+  const bulletH = bulletLines * bulletPx * 1.46 * lineScale;
   const gap = (sec.bullets && sec.bullets.length) ? bodyPx * 0.45 : 0;
   return { total: contentH + gap + bulletH, contentLines: contentLines.length, bulletLines };
 }
@@ -257,8 +259,11 @@ function Q(s) {
 /**
  * 在 (x, y, w) 处绘制板块正文（内容 + 要点），返回占用高度。
  * bullets 逐条绘制，超出 maxH 的条数会被裁掉并计数（正常情况不应发生）。
+ * lineScale：行距缩放，与 measureSection 同口径（默认 1 = 原行距）。
+ * 注意：正文行本身不做 maxH 守卫——调用方须先用 measureSection 同参数测高适配，
+ * 保证传入的板块在 maxH 内放得下（v2 版式由 fitBodyV2 保证）。
  */
-function drawSectionBody(ctx, sec, x, y, w, bodyPx, pal, maxH) {
+function drawSectionBody(ctx, sec, x, y, w, bodyPx, pal, maxH, lineScale = 1) {
   const bulletPx = Math.round(bodyPx * 0.94);
   const indent = bulletPx * 1.1;
   let cy = y;
@@ -271,7 +276,7 @@ function drawSectionBody(ctx, sec, x, y, w, bodyPx, pal, maxH) {
     const lines = wrapText(ctx, Q(sec.content), w);
     for (const ln of lines) {
       ctx.fillText(ln, x, cy + bodyPx);
-      cy += bodyPx * 1.52;
+      cy += bodyPx * 1.52 * lineScale;
     }
   }
   const bullets = sec.bullets || [];
@@ -279,7 +284,7 @@ function drawSectionBody(ctx, sec, x, y, w, bodyPx, pal, maxH) {
   setFont(ctx, bulletPx, false);
   for (const b of bullets) {
     const lines = wrapText(ctx, Q(b), w - indent);
-    const need = lines.length * bulletPx * 1.46;
+    const need = lines.length * bulletPx * 1.46 * lineScale;
     if (cy + need - y > maxH) { dropped++; continue; }
     lines.forEach((ln, i) => {
       if (i === 0) {
@@ -288,7 +293,7 @@ function drawSectionBody(ctx, sec, x, y, w, bodyPx, pal, maxH) {
       }
       ctx.fillStyle = SUBINK;
       ctx.fillText(ln, x + indent, cy + bulletPx);
-      cy += bulletPx * 1.46;
+      cy += bulletPx * 1.46 * lineScale;
     });
   }
   return { h: cy - y, dropped };
@@ -512,7 +517,7 @@ function layoutPaper(ctx, tpl, pal, variant) {
   const colW = (gridW - colGap) / 2;
   const top = 348;
   const footerH = 118;
-  const tipsH = tpl.writeTips ? 104 : 0;
+  const tipsH = 0; // 整改 2026-11-14：成品图须整张即手抄报正文（可直接下载交作业），禁止书写小贴士/装饰建议等非正文板块
   const colH = H - top - footerH - tipsH;
   const secGap = 44;
   const secH = (colH - secGap) / 2;
@@ -542,23 +547,6 @@ function layoutPaper(ctx, tpl, pal, variant) {
     droppedTotal += r.dropped;
   });
 
-  /* ---- 底部书写小贴士条（填补留白 + 实用信息） ---- */
-  if (tpl.writeTips) {
-    const tY = top + colH + 18;
-    const tH = 78;
-    ctx.fillStyle = mix(pal.main, '#FFFFFF', 0.88);
-    roundRect(ctx, M, tY, gridW, tH, 16); ctx.fill();
-    ctx.strokeStyle = mix(pal.main, '#FFFFFF', 0.45); ctx.lineWidth = 2;
-    roundRect(ctx, M, tY, gridW, tH, 16); ctx.stroke();
-    drawEmoji(ctx, '✏️', M + 44, tY + tH / 2, 44, pal.mainDeep);
-    setFont(ctx, 27, false);
-    ctx.fillStyle = INK;
-    ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    const tipLines = wrapText(ctx, '书写小贴士：' + Q(tpl.writeTips), gridW - 130).slice(0, 2);
-    tipLines.forEach((ln, i) => {
-      ctx.fillText(ln, M + 82, tY + tH / 2 + (i - (tipLines.length - 1) / 2) * 36);
-    });
-  }
 
   drawFooter(ctx, pal, variant);
   return { bodyPx: fit.px, dropped: droppedTotal };

@@ -234,6 +234,73 @@ ${customText}
 - 【硬性禁令】成品图会直接打印交作业，整张图只能是手抄报正文：sections 只许是正文板块，禁止出现书写提示、排版提示、装饰建议、小贴士之类的指导性内容，也不要输出 writeTips、decorTips 字段`;
 }
 
+/* 解析「下限~上限」区间字符串（如 contentLen '20~40'、bullets '3~5'），解析失败返回 null */
+function parseRange(rangeStr) {
+  const m = String(rangeStr || '').match(/(\d+)\s*[~～\-]\s*(\d+)/);
+  return m ? { min: Number(m[1]), max: Number(m[2]) } : null;
+}
+
+/**
+ * 方案年级口径校验（纯函数）：逐 section 核对 GRADE_PROFILES——
+ * bullets 条数不得低于该年级区间下限；content 字数（去空白计）不得超过该年级上限的 1.5 倍。
+ * 返回不达标项描述数组（空数组 = 达标）。方案结构异常时返回空数组，结构问题由各路由自己的校验处理。
+ */
+function validatePlanForGrade(plan, grade) {
+  const violations = [];
+  if (!plan || !Array.isArray(plan.sections)) return violations;
+  const p = gradeProfile(grade);
+  const bulletsRange = parseRange(p.bullets);
+  const contentRange = parseRange(p.contentLen);
+  plan.sections.forEach((sec, i) => {
+    const label = '第' + (i + 1) + '板块「' + (sec && sec.title ? sec.title : '') + '」';
+    if (bulletsRange) {
+      const n = sec && Array.isArray(sec.bullets) ? sec.bullets.length : 0;
+      if (n < bulletsRange.min) {
+        violations.push(label + '要点只有 ' + n + ' 条，' + grade + '口径至少 ' + bulletsRange.min + ' 条，请补足到 ' + bulletsRange.min + '~' + bulletsRange.max + ' 条');
+      }
+    }
+    if (contentRange) {
+      const len = String((sec && sec.content) || '').replace(/\s/g, '').length;
+      const hardMax = Math.floor(contentRange.max * 1.5);
+      if (len > hardMax) {
+        violations.push(label + '正文 ' + len + ' 字，超过' + grade + '口径上限 ' + contentRange.max + ' 字的 1.5 倍（' + hardMax + ' 字），请压缩到 ' + contentRange.max + ' 字以内');
+      }
+    }
+  });
+  return violations;
+}
+
+/**
+ * 方案生成（/generate 与 /generate-image 两条链路共用）：生成后按年级口径校验，
+ * 不达标带纠正说明重试一次；重试仍不达标则用重试结果继续（console.warn 留痕，不无限重试）；
+ * 重试调用失败或结果结构异常则回退首次方案。此校验对 dryRun 与真实请求一视同仁。
+ */
+async function generatePlan(params) {
+  const plan = await callAgnes(buildPrompt(params));
+  const violations = validatePlanForGrade(plan, params.grade);
+  if (!violations.length) return plan;
+  console.warn('[POSTER] 方案未达年级口径，重试一次：', violations.join('；'));
+  const retryPrompt = buildPrompt(params)
+    + '\n\n【重要纠正】上一次生成的方案有以下不达标项，本次必须逐项修正，其余要求不变：\n'
+    + violations.map(v => '- ' + v).join('\n');
+  let retry = null;
+  try {
+    retry = await callAgnes(retryPrompt);
+  } catch (e) {
+    console.warn('[POSTER] 方案纠正重试调用失败，沿用首次方案：', e.message);
+    return plan;
+  }
+  if (!retry || !Array.isArray(retry.sections) || !retry.sections.length) {
+    console.warn('[POSTER] 方案纠正重试结果结构异常，沿用首次方案');
+    return plan;
+  }
+  const retryViolations = validatePlanForGrade(retry, params.grade);
+  if (retryViolations.length) {
+    console.warn('[POSTER] 方案重试后仍不达标，继续使用重试结果：', retryViolations.join('；'));
+  }
+  return retry;
+}
+
 /**
  * 构造文生图提示词：儿童手抄报插画底图
  * 四周丰富装饰边框 + 中央大面积留白；禁止画面出现任何文字（乱码根源），
@@ -269,7 +336,8 @@ ${secs}
 画面内容：${scene}。
 ${gradeVisualRule(grade)}
 【要求】画面饱满、色彩鲜艳、主体突出、细节丰富；适合作为手抄报的题头插画。
-【绝对禁止】画面中不得出现任何文字、汉字、字母、数字、拼音、水印、签名。`;
+【绝对禁止】画面中不得出现任何文字、汉字、字母、数字、拼音、水印、签名。
+【绝对禁止】画面中也不要出现任何可以承载文字的载体形态：对联、春联、横幅、牌匾、招牌、旗帜、书本封面、报纸、海报、黑板、屏幕、标语牌、纸张特写等一律不要画——这些形态会诱发画面自带文字；节日与主题氛围改用无文字的实物元素（灯笼、鞭炮、礼花、植物、器物、人物活动等）表现。`;
   }
 
   return `请绘制一张儿童手抄报插画底图，竖版 A4 比例约 3:4，适合打印。
@@ -321,8 +389,7 @@ router.post('/generate', async (req, res) => {
       return res.status(429).json({ ok: false, msg: '今日生成已达上限（' + DAILY_LIMIT + ' 份），明天再来吧' });
     }
 
-    const prompt = buildPrompt(req.body);
-    const poster = await callAgnes(prompt);
+    const poster = await generatePlan(req.body);
 
     // 校验返回结构
     if (!poster.title || !poster.sections || !Array.isArray(poster.sections) || poster.sections.length < 4) {
@@ -421,17 +488,16 @@ router.post('/generate-image', async (req, res) => {
       ? String(custom).trim()
       : (String(theme).trim() + '主题的欢乐卡通场景：卡通小朋友参与其中，场景饱满、色彩鲜艳、细节丰富');
     const heroPrompt = buildImagePrompt(Object.assign({}, req.body, { mode: 'illustration', custom: heroScene }));
-    const planPrompt = buildPrompt(req.body);
 
     const [url, planFirst] = await Promise.all([
       callAgnesImage(heroPrompt, '1536x1024'),
-      callAgnes(planPrompt).catch((e) => {
+      generatePlan(req.body).catch((e) => {
         console.warn('[POSTER] 文字方案生成失败，将重试一次:', e.message);
         return null;
       })
     ]);
     // 方案是合成的必需品：重试一次仍失败就报错，绝不交付无字半成品
-    const plan = planFirst || await callAgnes(planPrompt);
+    const plan = planFirst || await generatePlan(req.body);
     if (!plan || !Array.isArray(plan.sections) || plan.sections.length < 1) {
       throw new Error('AI 返回的方案缺少板块');
     }
@@ -1389,3 +1455,5 @@ module.exports.gradeTextRule = gradeTextRule;
 module.exports.gradeVisualRule = gradeVisualRule;
 module.exports.buildPrompt = buildPrompt;
 module.exports.buildImagePrompt = buildImagePrompt;
+module.exports.validatePlanForGrade = validatePlanForGrade;
+module.exports.generatePlan = generatePlan;

@@ -75,13 +75,93 @@ if (kind === 'bubble') { bubble(ctx, x, y, 24, color); bubble(ctx, x + 44, y + 1
 else R.drawMotif(ctx, kind, x, y, 26, color, color2);
 }
 
-/* ---------- 字号适配（下限 20px，保证密排主题零裁剪） ---------- */
-function fitBodySizeV2(ctx, sections, innerW, innerH) {
-for (let px = 34; px >= 20; px -= 1) {
-const ok = sections.every(sec => R.measureSection(ctx, sec, innerW, px).total <= innerH);
-if (ok) return { px, trimmed: false};
+/* ---------- 正文适配：字号 → 行距 → 省要点 → 整句截断，任何正文完整落卡 ----------
+* 原实现缺陷（2026-11-15 评测实锤，防溺水·六年级）：字号只试到 20px 下限，试不下返回
+* trimmed 标志但主流程不处理，drawSectionBody 对正文行又无高度守卫——两栏卡 200+ 字
+* 正文直接画出卡外、压住下一行卡片；bullets 则因正文已耗尽高度被逐条丢弃（整卡无要点）。
+* 新口径（顺序即优先级，不许跳步）：
+* 1) 全页统一 (字号, 行距) 搜索：先固定原行距逐级缩字号 34→16px；仍放不下再逐档收紧
+*    行距因子（1.52→1.44→1.37→1.30），每档内再走一遍字号——全部板块（含 bullets）
+*    放得下即定版。此前能放下的版面在本步必然以原行距命中，与旧行为完全一致。
+* 2) 仍放不下：全页定格 (16px, 1.30)，逐卡降级——先整组省略 bullets 保正文完整
+*    （省略条数记 meta.droppedBullets）；正文还放不下才按整句截断并在末尾加「……」
+*    （整句放不下首句时按字兜底），截断卡数记 meta.truncatedCards。
+* 字号下限取 16px 的依据：设计上限 270 字/卡（六年级上限 180 字 ×1.5 容差）在最紧的
+* 两栏三行卡（内宽 482、内高 223）内须不截断放下——17px 时约 10~11 行 ×22.1 临界溢出，
+* 16px 时约 9 行 ×20.8 有余量；16px 于 A4@150dpi 成品约合 7.7pt，仅最长卡触达。 */
+const BODY_MAX_PX = 34, BODY_MIN_PX = 16;
+const LINE_FACTORS = [1.52, 1.44, 1.37, 1.30];
+const ELLIPSIS = '……';
+
+function lineScaleOf(factor) { return factor / LINE_FACTORS[0]; }
+function measureBodyV2(ctx, sec, innerW, px, factor) {
+return R.measureSection(ctx, sec, innerW, px, lineScaleOf(factor)).total;
 }
-return { px: 20, trimmed: true};
+
+/* 按句切分：句末标点（。！？；）连同紧随的收尾引号/括号归入本句，供整句截断用 */
+function splitSentences(text) {
+const chars = Array.from(String(text || ''));
+const END = new Set(['。', '！', '？', '；']);
+const TAIL = new Set(['」', '』', '）', '】', '”', '’', '"', "'", '〕']);
+const out = [];
+let cur = '';
+for (let i = 0; i < chars.length; i++) {
+cur += chars[i];
+if (END.has(chars[i])) {
+let j = i + 1;
+while (j < chars.length && TAIL.has(chars[j])) { cur += chars[j]; j++; }
+i = j - 1;
+out.push(cur); cur = '';
+}
+}
+if (cur) out.push(cur);
+return out;
+}
+
+/* 把正文截断到恰好放进 innerH：优先整句保留（末尾加「……」并计入测高），首句都放不下时按字二分兜底 */
+function truncateContentToFit(ctx, content, innerW, innerH, px, factor) {
+const full = String(content || '');
+const fits = (t) => measureBodyV2(ctx, { content: t, bullets: []}, innerW, px, factor) <= innerH;
+if (fits(full)) return { content: full, truncated: false};
+let acc = '';
+for (const s of splitSentences(full)) {
+if (!fits(acc + s + ELLIPSIS)) break;
+acc += s;
+}
+if (acc) return { content: acc + ELLIPSIS, truncated: true};
+let lo = 0, hi = full.length;
+while (lo < hi) {
+const mid = Math.ceil((lo + hi) / 2);
+if (fits(full.slice(0, mid) + ELLIPSIS)) lo = mid; else hi = mid - 1;
+}
+return { content: full.slice(0, lo) + ELLIPSIS, truncated: true};
+}
+
+/* 单卡降级适配（仅在全页统一搜索失败后、于定格参数下逐卡执行）：
+* 全量放得下原样返回 → 整组省略 bullets 保正文 → 按整句截断正文（bullets 一并省略） */
+function fitCardBodyV2(ctx, sec, innerW, innerH, px, factor) {
+if (measureBodyV2(ctx, sec, innerW, px, factor) <= innerH) {
+return { sec, droppedBullets: 0, truncated: false};
+}
+const bullets = Array.isArray(sec.bullets)? sec.bullets: [];
+if (bullets.length && measureBodyV2(ctx, {...sec, bullets: []}, innerW, px, factor) <= innerH) {
+return { sec: {...sec, bullets: []}, droppedBullets: bullets.length, truncated: false};
+}
+const t = truncateContentToFit(ctx, sec.content, innerW, innerH, px, factor);
+return { sec: {...sec, content: t.content, bullets: []}, droppedBullets: bullets.length, truncated: t.truncated};
+}
+
+/* 全页正文适配：dims[i] = 第 i 卡的 { innerW, innerH }（通栏卡更宽、各自头部高不同，逐卡测高） */
+function fitBodyV2(ctx, cards, dims) {
+for (const factor of LINE_FACTORS) {
+for (let px = BODY_MAX_PX; px >= BODY_MIN_PX; px -= 1) {
+const ok = cards.every((sec, i) => measureBodyV2(ctx, sec, dims[i].innerW, px, factor) <= dims[i].innerH);
+if (ok) return { px, factor, fitted: cards.map(sec => ({ sec, droppedBullets: 0, truncated: false}))};
+}
+}
+const px = BODY_MIN_PX, factor = LINE_FACTORS[LINE_FACTORS.length - 1];
+const fitted = cards.map((sec, i) => fitCardBodyV2(ctx, sec, dims[i].innerW, dims[i].innerH, px, factor));
+return { px, factor, fitted};
 }
 
 /* ---------- 板块标题适配：测宽 → 缩字号 → 换行，绝不截断、绝不压出框外 ----------
@@ -203,13 +283,18 @@ const w = span === 2? hw: cardW;
 return fitSectionTitle(ctx, sec.title, w - 100 - padX);
 });
 const headHs = titleLayouts.map(t => t.lines.length <= 1? headH: Math.max(98, Math.ceil(t.lines.length * t.px * 1.25) + 36));
-// 每张卡按自身宽度做字号适配（通栏卡更宽，可用更大字号；取全体最小保证统一）
-const fits = cards.map((sec, i) => {
+// 全页正文适配（字号/行距统一，逐卡按自身宽高测高；放不下的卡已在此降级：
+// 省 bullets 或整句截断，绘制时必然落卡——见 fitBodyV2 口径）
+const dims = cards.map((sec, i) => {
 const span = (cols === 2 && i === n - 1 && n % 2 === 1)? 2: 1;
 const w = span === 2? hw: cardW;
-return fitBodySizeV2(ctx, [sec], w - padX * 2, cardH - headHs[i] - 14);
+return { innerW: w - padX * 2, innerH: cardH - headHs[i] - 14};
 });
-const bodyPx = Math.min(...fits.map(f => f.px));
+const bodyFit = fitBodyV2(ctx, cards, dims);
+const bodyPx = bodyFit.px;
+const bodyLineScale = lineScaleOf(bodyFit.factor);
+const droppedBulletsTotal = bodyFit.fitted.reduce((s, f) => s + f.droppedBullets, 0);
+const truncatedTotal = bodyFit.fitted.filter(f => f.truncated).length;
 let droppedTotal = 0;
 
 cards.forEach((sec, i) => {
@@ -253,7 +338,8 @@ const yy = uy + Math.sin((x / uw) * Math.PI * 2) * 4;
 x === 0? ctx.moveTo(ux + x, yy): ctx.lineTo(ux + x, yy);
 }
 ctx.stroke(); ctx.restore();
-const r = R.drawSectionBody(ctx, sec, cx + padX, cy + headHs[i] + 10, innerW, bodyPx, pal, innerH);
+// 正文用适配后的板块（可能已省 bullets/截断），标题与图标仍用原板块
+const r = R.drawSectionBody(ctx, bodyFit.fitted[i].sec, cx + padX, cy + headHs[i] + 10, innerW, bodyPx, pal, innerH, bodyLineScale);
 droppedTotal += r.dropped;
 });
 
@@ -269,7 +355,7 @@ ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
 ctx.fillText('班级：____________ 姓名：____________', 92, fy);
 ctx.restore();
 
-return { canvas, meta: { bodyPx, dropped: droppedTotal, layout: 'hero-v2-runtime', cards: n, rows, cols}};
+return { canvas, meta: { bodyPx, lineFactor: bodyFit.factor, dropped: droppedTotal, droppedBullets: droppedBulletsTotal, truncatedCards: truncatedTotal, layout: 'hero-v2-runtime', cards: n, rows, cols}};
 }
 
-module.exports = { renderPosterV2, toCards, MAX_GRID_SECTIONS, fitSectionTitle};
+module.exports = { renderPosterV2, toCards, MAX_GRID_SECTIONS, fitSectionTitle, fitBodyV2, fitCardBodyV2, splitSentences, truncateContentToFit, BODY_MIN_PX, LINE_FACTORS};

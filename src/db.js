@@ -436,6 +436,23 @@ function listLibraryPosters(theme, limit) {
 }
 
 
+/**
+ * 公共模板成品库主题清单：与 listLibraryPosters 同口径（官方账号、image 源、有图），
+ * 按主题聚合计数，供小程序手抄报入口页动态生成主题格（新主题入库即有入口，不必发版）。
+ */
+function listLibraryThemes() {
+  return new Promise((resolve, reject) => {
+    db.all(
+      "SELECT theme, COUNT(*) AS cnt FROM posters WHERE source = 'image' AND image_url != '' AND account_id = ? GROUP BY theme",
+      [process.env.OFFICIAL_ACCOUNT_ID || 'acc_16yue1j'],
+      (err, rows) => {
+        if (err) reject(err);
+        else resolve((rows || []).map(r => ({ theme: r.theme, count: r.cnt })));
+      }
+    );
+  });
+}
+
 /** 管理用：列出全部成品图（含 account_id），用于批量重合成 */
 function allPostersForAdmin() {
   return new Promise((resolve, reject) => {
@@ -860,7 +877,7 @@ module.exports = {
   saveSmsCode, verifySmsCode,
   getParentRecord, saveParentRecord, upsertParentProfile, isParentRegistered,
   createExam, listExams, getExam, deleteExam, countExamsToday,
-  createPoster, listPosters, listLibraryPosters, allPostersForAdmin, getPoster, deletePoster, updatePoster,
+  createPoster, listPosters, listLibraryPosters, listLibraryThemes, allPostersForAdmin, getPoster, deletePoster, updatePoster,
   putBlob, getBlob, createFeedback, countFeedbacksSince, listFeedbacks, insertAnalyticsEvents, runSql, getSql, allSql,
   deleteAccountData,
   countPostersToday, countImagesToday,

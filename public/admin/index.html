@@ -110,6 +110,7 @@
     <button data-tab="feedbacks">反馈</button>
     <button data-tab="posters">手抄报库</button>
     <button data-tab="citydemand">城市需求</button>
+    <button data-tab="analytics">行为分析</button>
     <button data-tab="system">系统</button>
   </nav>
   <main>
@@ -148,6 +149,36 @@
         <tbody id="cityDemandBody"></tbody>
       </table>
       <div class="empty hidden" id="cityDemandEmpty">还没有未开通城市的需求记录</div>
+    </section>
+    <section id="tab-analytics">
+      <div class="cards" id="analyticsCards"></div>
+      <div class="note">今日 / 昨日按上海时区日界，Top 与意图分布为近 7 天。埋点只记功能使用情况（页面、入口、动作与次数），不含用户填写的文字内容。</div>
+      <div class="theme-title">页面访问 Top（近 7 天）</div>
+      <table>
+        <thead><tr><th>页面</th><th>访问次数</th></tr></thead>
+        <tbody id="analyticsPages"></tbody>
+      </table>
+      <div class="theme-title">功能点击 Top（近 7 天）</div>
+      <table>
+        <thead><tr><th>入口</th><th>点击次数</th></tr></thead>
+        <tbody id="analyticsFeatures"></tbody>
+      </table>
+      <div class="theme-title">首开意图分布（近 7 天）</div>
+      <table>
+        <thead><tr><th>意图</th><th>次数</th></tr></thead>
+        <tbody id="analyticsIntents"></tbody>
+      </table>
+      <div class="theme-title">事件明细</div>
+      <div class="chips">
+        <input id="analyticsAccount" placeholder="输入账号 ID 查该用户时间线" style="border:1px solid var(--line);border-radius:8px;padding:6px 10px;min-width:260px;background:#fff">
+        <button id="analyticsQuery">查询时间线</button>
+        <button id="analyticsReset">看全部</button>
+      </div>
+      <table>
+        <thead><tr><th>时间</th><th>账号</th><th>事件</th><th>详情</th><th></th></tr></thead>
+        <tbody id="analyticsRecent"></tbody>
+      </table>
+      <div class="empty hidden" id="analyticsEmpty">还没有埋点数据</div>
     </section>
     <section id="tab-system">
       <div id="sysBox"></div>
@@ -202,7 +233,7 @@
     var btn = e.target.closest('button[data-tab]');
     if (!btn) return;
     Array.prototype.forEach.call($('tabs').children, function (b) { b.classList.toggle('active', b === btn); });
-    ['overview', 'users', 'feedbacks', 'posters', 'citydemand', 'system'].forEach(function (t) {
+    ['overview', 'users', 'feedbacks', 'posters', 'citydemand', 'analytics', 'system'].forEach(function (t) {
       $('tab-' + t).classList.toggle('active', t === btn.dataset.tab);
     });
     var tab = btn.dataset.tab;
@@ -212,6 +243,7 @@
       if (tab === 'feedbacks') loadFeedbacks();
       if (tab === 'posters') loadPosters();
       if (tab === 'citydemand') loadCityDemand();
+      if (tab === 'analytics') loadAnalytics('');
       if (tab === 'system') loadSystem();
     }
   });
@@ -346,6 +378,46 @@
       });
     });
   }
+
+  /* ---------- 行为分析 ---------- */
+  function analyticsTopRows(rows, emptyText) {
+    if (!rows || !rows.length) return '<tr><td colspan="2" class="empty">' + emptyText + '</td></tr>';
+    return rows.map(function (r) {
+      return '<tr><td>' + esc(r.key || '(空)') + '</td><td>' + esc(r.count) + '</td></tr>';
+    }).join('');
+  }
+  function loadAnalytics(accountId) {
+    var qs = accountId ? ('?accountId=' + encodeURIComponent(accountId)) : '';
+    api('/api/admin/analytics' + qs).then(function (r) {
+      if (!r.ok) { $('analyticsCards').innerHTML = '<div class="empty">加载失败</div>'; return; }
+      var d = r.data, ov = d.overview || {};
+      function pv(p, label) {
+        p = p || {};
+        return '<div class="card"><div class="num">' + esc(p.events || 0) + '</div><div class="label">' + label + '事件量</div></div>' +
+          '<div class="card"><div class="num">' + esc(p.users || 0) + '</div><div class="label">' + label + '活跃用户</div></div>' +
+          '<div class="card"><div class="num">' + esc(p.sessions || 0) + '</div><div class="label">' + label + '会话数</div></div>';
+      }
+      $('analyticsCards').innerHTML = pv(ov.today, '今日') + pv(ov.yesterday, '昨日') + pv(ov.last7d, '近 7 天');
+      $('analyticsPages').innerHTML = analyticsTopRows(d.pageViews, '暂无页面访问');
+      $('analyticsFeatures').innerHTML = analyticsTopRows(d.featureClicks, '暂无功能点击');
+      $('analyticsIntents').innerHTML = analyticsTopRows(d.intents, '暂无意图选择');
+      var rows = d.recent || [];
+      $('analyticsEmpty').classList.toggle('hidden', rows.length > 0);
+      $('analyticsRecent').innerHTML = rows.map(function (e) {
+        return '<tr><td>' + fmtTime(e.serverTs) + '</td><td>' + esc(e.maskedAccountId) + '</td><td>' + esc(e.event) +
+          '</td><td>' + esc(e.propsText || '') + '</td>' +
+          '<td>' + (e.accountId ? '<button data-tl="' + esc(e.accountId) + '">时间线</button>' : '') + '</td></tr>';
+      }).join('');
+      if (d.timelineFor) $('analyticsAccount').value = d.timelineFor;
+    });
+  }
+  $('analyticsQuery').addEventListener('click', function () { loadAnalytics($('analyticsAccount').value.trim()); });
+  $('analyticsReset').addEventListener('click', function () { $('analyticsAccount').value = ''; loadAnalytics(''); });
+  $('analyticsRecent').addEventListener('click', function (e) {
+    var btn = e.target.closest('button[data-tl]');
+    if (!btn) return;
+    loadAnalytics(btn.dataset.tl);
+  });
 
   function loadSystem() {
     api('/api/admin/system').then(function (r) {

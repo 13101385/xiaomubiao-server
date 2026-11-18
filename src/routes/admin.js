@@ -262,6 +262,82 @@ router.get('/city-demand', async (req, res) => {
   }
 });
 
+/* ==================== 行为分析（埋点聚合，只读） ==================== */
+// 数据来自 analytics_events 表（POST /api/analytics/events 落库）。今日/昨日按上海时区日界切分。
+function shanghaiDayStart(offsetDays) {
+  const nowSh = new Date(Date.now() + 8 * 3600 * 1000);
+  const startUtc = Date.UTC(nowSh.getUTCFullYear(), nowSh.getUTCMonth(), nowSh.getUTCDate()) - 8 * 3600 * 1000;
+  return startUtc + (offsetDays || 0) * 86400 * 1000;
+}
+
+router.get('/analytics', async (req, res) => {
+  try {
+    const now = Date.now();
+    const since7d = shanghaiDayStart(-6);
+    const period = async (since, until) => {
+      const row = await db.getSql(
+        "SELECT COUNT(*) AS events, COUNT(DISTINCT NULLIF(account_id, '')) AS users, COUNT(DISTINCT NULLIF(session_id, '')) AS sessions " +
+        'FROM analytics_events WHERE server_ts >= ? AND server_ts < ?',
+        [since, until]
+      );
+      return { events: (row && row.events) || 0, users: (row && row.users) || 0, sessions: (row && row.sessions) || 0 };
+    };
+    const overview = {
+      today: await period(shanghaiDayStart(0), now + 1),
+      yesterday: await period(shanghaiDayStart(-1), shanghaiDayStart(0)),
+      last7d: await period(since7d, now + 1)
+    };
+    const top = async (event, propKey) => {
+      const rows = await db.allSql(
+        "SELECT json_extract(props, '$." + propKey + "') AS k, COUNT(*) AS n FROM analytics_events " +
+        'WHERE event = ? AND server_ts >= ? GROUP BY k ORDER BY n DESC LIMIT 20',
+        [event, since7d]
+      );
+      return (rows || []).map(r => ({ key: r.k == null ? '' : String(r.k), count: r.n || 0 }));
+    };
+    const pageViews = await top('page_view', 'path');
+    const featureClicks = await top('feature_click', 'entry');
+    const intents = await top('intent_select', 'intent');
+    // 明细：默认最近 100 条；带 accountId 时查该用户时间线（最近 200 条）
+    const accountId = typeof req.query.accountId === 'string' ? req.query.accountId.slice(0, 128) : '';
+    const rows = accountId
+      ? await db.allSql(
+          'SELECT id, account_id, child_id, session_id, event, props, client_ts, server_ts, app_version FROM analytics_events WHERE account_id = ? ORDER BY server_ts DESC, id DESC LIMIT 200',
+          [accountId]
+        )
+      : await db.allSql(
+          'SELECT id, account_id, child_id, session_id, event, props, client_ts, server_ts, app_version FROM analytics_events ORDER BY server_ts DESC, id DESC LIMIT 100'
+        );
+    const recent = (rows || []).map(r => {
+      let props = {};
+      try { props = JSON.parse(r.props || '{}'); } catch (e) { props = {}; }
+      return {
+        id: r.id,
+        accountId: r.account_id || '',
+        maskedAccountId: maskId(r.account_id),
+        childId: r.child_id || '',
+        sessionId: r.session_id || '',
+        event: r.event || '',
+        props,
+        propsText: Object.keys(props).map(k => k + '=' + props[k]).join(' '),
+        clientTs: r.client_ts || 0,
+        serverTs: r.server_ts || 0,
+        appVersion: r.app_version || ''
+      };
+    });
+    res.json({ ok: true, data: { overview, pageViews, featureClicks, intents, recent, timelineFor: accountId } });
+  } catch (e) {
+    // 表还没建（尚无任何上报）时按空数据返回，不报错
+    res.json({
+      ok: true, unavailable: true,
+      data: {
+        overview: { today: { events: 0, users: 0, sessions: 0 }, yesterday: { events: 0, users: 0, sessions: 0 }, last7d: { events: 0, users: 0, sessions: 0 } },
+        pageViews: [], featureClicks: [], intents: [], recent: [], timelineFor: ''
+      }
+    });
+  }
+});
+
 /* ==================== 用户（只读、脱敏） ==================== */
 
 function maskId(id) {

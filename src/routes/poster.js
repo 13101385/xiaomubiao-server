@@ -710,6 +710,21 @@ router.get('/library', async (req, res) => {
 });
 
 /**
+ * GET /api/poster/themes
+ * 公共模板成品库主题清单（不区分账号）：手抄报入口页据此动态生成主题格，
+ * 新主题入库即有入口；小程序端有本地 27 主题静态兜底，接口不可用时不影响使用。
+ */
+router.get('/themes', async (req, res) => {
+  try {
+    const list = await db.listLibraryThemes();
+    res.json({ ok: true, data: { list } });
+  } catch (err) {
+    console.error('[POSTER] themes error:', err.message);
+    res.status(500).json({ ok: false, msg: '获取主题清单失败' });
+  }
+});
+
+/**
  * 读取记录的合成成品图（库内 blob）；无成品或数据无效返回 null
  * composed_url 形如 /api/poster/composed/poster_xxx.jpg
  */
@@ -1301,7 +1316,7 @@ router.get('/:id/pdf', async (req, res) => {
         return res.status(500).json({ ok: false, msg: '手抄报图片数据无效，请重新生成后再导出' });
       }
 
-      const doc = new PDFDocument({ margin: 0, size: 'A4', info: { Title: title, Author: '成长趣味' } });
+      const doc = new PDFDocument({ margin: 0, size: 'A4', info: { Title: title, Author: '孩子打卡小目标' } });
       const buffers = [];
       doc.on('data', buffers.push.bind(buffers));
       doc.on('end', () => sendPdf(Buffer.concat(buffers)));
@@ -1399,7 +1414,7 @@ router.get('/:id/pdf', async (req, res) => {
 
         // 底部小字落款（白纱上深灰可读）
         doc.fillOpacity(0.9).fillColor('#8A97A8').fontSize(8.5)
-          .text('「成长趣味」· 打印后可直接装饰上色', 0, pageH - 24, { width: pageW, align: 'center' });
+          .text('「孩子打卡小目标」· 打印后可直接装饰上色', 0, pageH - 24, { width: pageW, align: 'center' });
         doc.fillOpacity(1);
       }
       doc.end();
@@ -1415,7 +1430,7 @@ router.get('/:id/pdf', async (req, res) => {
     const accentColor = pickColor(colorScheme.accent, FALLBACK_COLORS.accent);
     const bgColor = pickColor(colorScheme.bg, FALLBACK_COLORS.bg);
 
-    const doc = new PDFDocument({ margin: 0, size: 'A4', info: { Title: title, Author: '成长趣味' } });
+    const doc = new PDFDocument({ margin: 0, size: 'A4', info: { Title: title, Author: '孩子打卡小目标' } });
     doc.font(CHINESE_FONT);
     const buffers = [];
     let pageCount = 1; // 初始页

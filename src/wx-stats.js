@@ -18,6 +18,11 @@
  *
  * 失败诚实：Secret 无效/接口报错时只记录状态（errcode/errmsg/最后成功时间），
  * getWxOverview 返回 status='error'，概览页据此显示「微信数据同步未成功」，不拿自有口径填充。
+ *
+ * 抗限流（2026-11-19）：逐日连发 401 次曾触发微信 61504「system busy」。现逐日请求间加
+ * REQUEST_INTERVAL_MS 节流；单日遇 61504 或网络类临时错误时等 BUSY_RETRY_DELAY_MS 后重试该日，
+ * 单日最多尝试 MAX_ATTEMPTS_PER_DAY 次，仍失败才中止本轮（已落库天数不回滚）；其他 errcode
+ * （61501、40125 等）不重试、立即按失败口径处理。
  */
 const axios = require('axios');
 const db = require('./db');
@@ -29,6 +34,19 @@ const CHUNK_DAYS = 1;               // datacube 单次请求跨度：官方限�
 const BACKFILL_DAYS = 400;          // 首次回填窗口（覆盖上线至今；无数据日返回 0，不影响求和）
 const DAILY_SYNC_MIN = 8 * 60 + 30; // 每日同步触发时间 08:30（上海）
 const DAILY_RETRY_MS = 30 * 60 * 1000;
+
+/* ---------- 抗限流节流/重试（可用 env 覆盖以便 mock 测试，生产用默认值） ---------- */
+function envMs(name, def) {
+  const v = Number(process.env[name]);
+  return Number.isFinite(v) && v >= 0 ? v : def;
+}
+const REQUEST_INTERVAL_MS = envMs('WX_STATS_THROTTLE_MS', 400);       // 逐日请求之间的间隔
+const BUSY_RETRY_DELAY_MS = envMs('WX_STATS_RETRY_DELAY_MS', 60 * 1000); // 61504/网络错误后重试等待
+const MAX_ATTEMPTS_PER_DAY = 3;  // 单日最多尝试次数（首次 + 重试），用尽仍失败才中止本轮
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 /* ---------- 日期工具（固定 Asia/Shanghai = UTC+8，与 reminder-scheduler 同口径） ---------- */
 
@@ -98,6 +116,22 @@ function wxError(errcode, errmsg) {
   return err;
 }
 
+/** 网络类临时错误（无业务 errcode、重试可能恢复）：超时/连接重置/ DNS 抖动等 */
+function isNetworkError(e) {
+  if (!e) return false;
+  const code = e.code || '';
+  if (['ECONNABORTED', 'ETIMEDOUT', 'ECONNRESET', 'ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'EPIPE', 'ERR_NETWORK'].indexOf(code) >= 0) return true;
+  if (!e.response && /timeout|network|socket|econn|etimedout/i.test(String(e.message || ''))) return true;
+  return false;
+}
+
+/** 可重试错误：微信 61504（system busy）或网络类临时错误；其他 errcode 一律不重试 */
+function isRetryable(err) {
+  if (!err) return false;
+  if (err.errcode === 61504) return true;
+  return !!err.retryable;
+}
+
 /** 拉一个分片（beginDay..endDay，'YYYY-MM-DD'，跨度 ≤ CHUNK_DAYS；当前即单日 begin=end），返回原始 list */
 async function fetchTrendChunk(token, beginDay, endDay) {
   let res;
@@ -108,13 +142,38 @@ async function fetchTrendChunk(token, beginDay, endDay) {
       { timeout: 15000 }
     );
   } catch (e) {
-    throw wxError(e.errcode, '微信数据接口请求失败: ' + e.message);
+    const err = wxError(e.errcode, '微信数据接口请求失败: ' + e.message);
+    if ((e && e.errcode === 61504) || isNetworkError(e)) err.retryable = true;
+    throw err;
   }
   const data = res.data || {};
   if (data.errcode) {
-    throw wxError(data.errcode, '微信数据接口失败: ' + (data.errmsg || data.errcode));
+    const err = wxError(data.errcode, '微信数据接口失败: ' + (data.errmsg || data.errcode));
+    if (data.errcode === 61504) err.retryable = true;
+    throw err;
   }
   return Array.isArray(data.list) ? data.list : [];
+}
+
+/**
+ * 拉单日数据（带抗限流重试）：遇 61504/网络临时错误时等 BUSY_RETRY_DELAY_MS 后重试该日，
+ * 单日最多尝试 MAX_ATTEMPTS_PER_DAY 次；非临时错误立即抛出，用尽次数仍失败也抛出（中止本轮，
+ * 已落库天数不回滚，由 syncWxStats 按既有口径落失败状态）。
+ */
+async function fetchDayWithRetry(token, day) {
+  let lastErr = null;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS_PER_DAY; attempt++) {
+    try {
+      return await fetchTrendChunk(token, day, day);
+    } catch (e) {
+      lastErr = e;
+      if (!isRetryable(e) || attempt === MAX_ATTEMPTS_PER_DAY) throw e;
+      console.warn('[WX-STATS]', day, '临时失败（' + (e.errcode != null ? 'errcode ' + e.errcode : '网络错误') +
+        '），' + Math.round(BUSY_RETRY_DELAY_MS / 1000) + ' 秒后重试（第 ' + (attempt + 1) + '/' + MAX_ATTEMPTS_PER_DAY + ' 次）');
+      await sleep(BUSY_RETRY_DELAY_MS);
+    }
+  }
+  throw lastErr;
 }
 
 async function upsertDay(item) {
@@ -150,10 +209,14 @@ async function syncWxStats() {
     let begin = latest ? addDays(latest, -2) : addDays(yesterday, -BACKFILL_DAYS);
     if (begin > yesterday) begin = yesterday;
     let cursor = begin;
+    let firstRequest = true;
     while (cursor <= yesterday) {
       let chunkEnd = addDays(cursor, CHUNK_DAYS - 1);
       if (chunkEnd > yesterday) chunkEnd = yesterday;
-      const list = await fetchTrendChunk(token, cursor, chunkEnd);
+      // 抗限流节流：逐日请求之间留间隔（首个请求不等待；重试自带更长的等待，不再叠加）
+      if (!firstRequest && REQUEST_INTERVAL_MS > 0) await sleep(REQUEST_INTERVAL_MS);
+      firstRequest = false;
+      const list = await fetchDayWithRetry(token, cursor);
       for (const item of list) await upsertDay(item);
       cursor = addDays(chunkEnd, 1);
     }
@@ -243,5 +306,6 @@ module.exports = {
   startWxStatsSync,
   TARGET_USERS,
   _ensureTables: ensureTables,
-  _shanghaiDay: shanghaiDay
+  _shanghaiDay: shanghaiDay,
+  _timing: { REQUEST_INTERVAL_MS, BUSY_RETRY_DELAY_MS, MAX_ATTEMPTS_PER_DAY }
 };

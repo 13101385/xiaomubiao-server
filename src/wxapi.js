@@ -24,7 +24,9 @@ async function getAccessToken() {
   });
   const data = res.data || {};
   if (!data.access_token) {
-    throw new Error('获取 access_token 失败: ' + (data.errmsg || data.errcode || 'unknown'));
+    const err = new Error('获取 access_token 失败: ' + (data.errmsg || data.errcode || 'unknown'));
+    if (data.errcode) err.errcode = data.errcode; // 供调用方记录微信 errcode（如 40125 appsecret 无效）
+    throw err;
   }
   tokenCache = {
     token: data.access_token,

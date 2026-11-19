@@ -33,6 +33,7 @@ const weekendRoutes = require('./routes/weekend');
 const analyticsRoutes = require('./routes/analytics');
 const adminRoutes = require('./routes/admin');
 const { startReminderScheduler } = require('./reminder-scheduler');
+const wxStats = require('./wx-stats');
 
 const app = express();
 const PORT = config.port;
@@ -111,6 +112,10 @@ async function start() {
     await db.init();
 
     startReminderScheduler();
+
+    // 微信官方数据（流量主口径）：启动后延迟同步一次，之后每日 08:30 由调度 tick 触发；
+    // 同步失败只记录状态供后台概览诚实展示，不影响服务启动
+    wxStats.startWxStatsSync();
 
     app.listen(PORT, () => {
       console.log(`[SERVER] Running on http://localhost:${PORT}`);

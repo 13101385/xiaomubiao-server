@@ -12,13 +12,14 @@
  */
 const db = require('./db');
 const wxapi = require('./wxapi');
+const wxStats = require('./wx-stats');
 const { TEMPLATES, buildStartData, buildDueData, buildDailyData } = require('./reminder-config');
 
 const TICK_MS = 5 * 60 * 1000;
 const DUE_START_MIN = 20 * 60 + 30; // 20:30
 const DUE_END_MIN = 21 * 60 + 30;   // 21:30
 const DAILY_START_MIN = 7 * 60 + 30; // 07:30
-const DAILY_END_MIN = 7 * 60 + 45;    // 07:45
+const DAILY_END_MIN = 7 * 60 + 45;   // 07:45
 
 let timer = null;
 let ticking = false;
@@ -139,6 +140,9 @@ async function tick() {
     await scanStartReminders(now);
     await scanDueReminders(now);
     await db.cleanupReminderData(addDays(now.date, -1), addDays(now.date, -7));
+    // 微信官方数据每日同步：08:30 后首个 tick 触发（内部日粒度去重、失败 30 分钟后重试），
+    // 只记同步状态、绝不阻塞或影响提醒主流程
+    try { wxStats.maybeDailySync(now); } catch (e) { /* 忽略 */ }
   } catch (e) {
     console.error('[REMINDER] 调度轮次失败:', e.message);
   } finally {

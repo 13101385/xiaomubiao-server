@@ -230,6 +230,26 @@ router.get('/overview', async (req, res) => {
   const now = Date.now();
   // 注册用户口径：parent_records 为现行账号体系（海报/试卷/提醒均以 account_id 关联）
   await metric('totalUsers', () => countValue('SELECT COUNT(*) AS n FROM parent_records'));
+  // 使用用户口径（含未登录）：各业务表 account_id 的并集去重——凡在服务端留下过独立 ID 的都算，
+  // 含只用过埋点/城市需求/反馈等入口、从未注册的游客。剔除官方库账号与部署验证测试号。
+  // 旧 users 表为另一套 ID 体系（id/open_id），与 account_id 无法可靠对齐，未并入（其行数另有 usersTableCount 单独展示）。
+  await metric('usageUsers', async () => {
+    const sources = ['parent_records', 'analytics_events', 'weekend_city_demand', 'feedbacks',
+      'reminder_subs', 'reminder_tasks', 'reminder_sent_log', 'reminder_daily_hooks', 'exams', 'posters'];
+    const ids = new Set();
+    let okSources = 0;
+    for (const t of sources) {
+      try {
+        const rows = await db.allSql("SELECT DISTINCT account_id AS id FROM " + t + " WHERE account_id <> ''");
+        okSources++;
+        (rows || []).forEach((r) => { if (r.id) ids.add(String(r.id)); });
+      } catch (e) { /* 单表缺失（如城市需求表懒建未触发）时跳过该来源，不拖垮整体 */ }
+    }
+    if (!okSources) throw new Error('no usage source available');
+    ids.delete(OFFICIAL_ACCOUNT_ID);
+    ids.delete('deploy-verify');
+    return ids.size;
+  });
   await metric('usersTableCount', () => countValue('SELECT COUNT(*) AS n FROM users'));
   await metric('newUsers7d', () => countValue('SELECT COUNT(*) AS n FROM parent_records WHERE created_at >= ?', [now - 7 * 86400 * 1000]));
   await metric('reminderSubscribers', () => countValue('SELECT COUNT(DISTINCT account_id) AS n FROM reminder_subs'));

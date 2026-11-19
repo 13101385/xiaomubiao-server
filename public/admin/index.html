@@ -45,6 +45,14 @@
   .card .num { font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums; }
   .card .label { color: var(--sub); font-size: 13px; margin-top: 4px; }
   .note { color: var(--faint); font-size: 12px; margin-top: 12px; line-height: 1.6; }
+  .sec-title { font-size: 15px; font-weight: 700; margin: 22px 0 10px; }
+  .sec-title:first-child { margin-top: 0; }
+  .wx-banner { border-radius: 14px; padding: 14px 16px; margin-bottom: 12px; line-height: 1.7; font-size: 13px; }
+  .wx-banner.err { background: #FDF0EF; border: 1px solid #F2C1BE; color: #8C3A36; }
+  .wx-banner.wait { background: #FBF7F1; border: 1px solid var(--line); color: var(--sub); }
+  .wx-meta { color: var(--faint); font-size: 12px; margin-top: 10px; line-height: 1.6; }
+  .bar { height: 8px; background: #F1E8DC; border-radius: 99px; overflow: hidden; margin-top: 10px; }
+  .bar > div { height: 100%; background: var(--brand); border-radius: 99px; }
 
   /* 表格 */
   table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
@@ -115,6 +123,9 @@
   </nav>
   <main>
     <section id="tab-overview" class="active">
+      <div class="sec-title">微信官方数据 · 流量主口径（主）</div>
+      <div id="wxBox"></div>
+      <div class="sec-title">自有口径（辅助）</div>
       <div class="cards" id="overviewCards"></div>
       <div class="note" id="overviewNote"></div>
     </section>
@@ -254,16 +265,50 @@
     ['yesterdayPushSent', '昨日推送送达'], ['pendingFeedbacks', '待处理反馈'], ['officialPosters', '官方手抄报'],
     ['totalExams', '出题总数']
   ];
+  function renderWx(wx) {
+    var box = $('wxBox');
+    if (!wx) { box.innerHTML = '<div class="wx-banner wait">微信数据待同步：尚未取得同步状态（服务启动后自动同步，每日约 08:30 更新）。</div>'; return; }
+    var html = '';
+    if (wx.status === 'error') {
+      html += '<div class="wx-banner err"><strong>微信数据同步未成功</strong><br>原因：' +
+        esc(wx.errmsg || '未知错误') + (wx.errcode != null ? '（errcode ' + esc(wx.errcode) + '）' : '') +
+        '<br>最后成功：' + (wx.lastSuccessAt ? esc(fmtTime(wx.lastSuccessAt)) : '暂无成功记录') + '</div>';
+    }
+    if (wx.cumulativeUsers == null) {
+      if (wx.status === 'pending') {
+        html += '<div class="wx-banner wait">微信数据待同步：服务启动后自动同步一次，此后每日约 08:30 同步昨日数据。</div>';
+      }
+      box.innerHTML = html;
+      return;
+    }
+    function card(v, label) {
+      return '<div class="card"><div class="num">' + (v == null ? '暂无' : esc(v)) + '</div><div class="label">' + label + '</div></div>';
+    }
+    html += '<div class="cards">' +
+      card(wx.cumulativeUsers, '累计用户（微信独立访客）') +
+      card(wx.yesterdayNew, '昨日新增用户') +
+      card(wx.yesterdayUv, '昨日访问人数') +
+      '<div class="card" style="grid-column: span 2"><div class="num">' + esc(wx.cumulativeUsers) + ' / ' + esc(wx.target) +
+      '</div><div class="label">流量主开通进度 · 还差 ' + esc(wx.remaining) + ' 人</div>' +
+      '<div class="bar"><div style="width:' + (wx.percent || 0) + '%"></div></div></div>' +
+      '</div>';
+    html += '<div class="wx-meta">数据日期：' + esc(wx.dataDate || '-') +
+      ' · 最后同步成功：' + (wx.lastSuccessAt ? esc(fmtTime(wx.lastSuccessAt)) : '-') +
+      '（微信官方数据分析口径，累计用户为各日新增独立访客之和；与下方自有口径不是同一口径）</div>';
+    box.innerHTML = html;
+  }
+
   function loadOverview() {
     api('/api/admin/overview').then(function (r) {
-      if (!r.ok) { $('overviewCards').innerHTML = '<div class="empty">加载失败</div>'; return; }
+      if (!r.ok) { $('overviewCards').innerHTML = '<div class="empty">加载失败</div>'; $('wxBox').innerHTML = ''; return; }
+      renderWx(r.data.wx);
       $('overviewCards').innerHTML = OV.map(function (it) {
         var v = r.data[it[0]];
         return '<div class="card"><div class="num">' + (v == null ? '暂无' : esc(v)) + '</div><div class="label">' + it[1] + '</div></div>';
       }).join('');
       var notes = [];
       if (r.data.unavailable && r.data.unavailable.length) notes.push('以下指标暂时取不到（数据源缺失，已按实显示为空）：' + r.data.unavailable.join('、'));
-      notes.push('「总用户」口径：在服务器留下过记录的独立账号/设备去重，含未登录游客（已剔除官方与测试账号）。「今日活跃 / 近 30 天活跃」＝在对应时段内在服务器留下过记录的独立账号/设备；每个家庭的任务、积分、打卡明细保存在家长手机本地，后端看不到，故本页数字与微信官方「累计用户 / 访问人数」不是同一口径。');
+      notes.push('自有口径（辅助）：「总用户」＝在服务器留下过记录的独立账号/设备去重，含未登录游客（已剔除官方与测试账号）。「今日活跃 / 近 30 天活跃」＝在对应时段内在服务器留下过记录的独立账号/设备；每个家庭的任务、积分、打卡明细保存在家长手机本地，后端看不到，故下方数字与上方微信官方「累计用户 / 访问人数」不是同一口径。');
       $('overviewNote').textContent = notes.join(' ');
     });
   }

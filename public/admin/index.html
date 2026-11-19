@@ -128,6 +128,8 @@
       <div class="sec-title">自有口径（辅助）</div>
       <div class="cards" id="overviewCards"></div>
       <div class="note" id="overviewNote"></div>
+      <div class="sec-title">提醒诊断（只读）</div>
+      <div id="remindDiagBox"></div>
     </section>
     <section id="tab-users">
       <table>
@@ -298,10 +300,32 @@
     box.innerHTML = html;
   }
 
+  function renderRemindDiag(d) {
+    var box = $('remindDiagBox');
+    if (!d) { box.innerHTML = '<div class="note">提醒诊断暂不可用（数据源缺失）。</div>'; return; }
+    function card(v, label) {
+      return '<div class="card"><div class="num">' + (v == null ? '暂无' : esc(v)) + '</div><div class="label">' + label + '</div></div>';
+    }
+    var html = '<div class="cards">' +
+      card(d.subscribers, '提醒订阅账号数') +
+      card(d.startQuotaTotal, '备忘录模板总剩余额度') +
+      card(d.dueQuotaTotal, '到期模板总剩余额度') +
+      card(d.zeroQuotaAccounts, '备忘录额度为 0 的账号') +
+      card(d.todayTargets, '今日每日精选目标') +
+      '</div>';
+    html += '<table style="margin-top:12px"><thead><tr><th>日期</th><th>钩子行</th><th>开启每日精选</th><th>有效目标</th><th>已发 每日精选</th><th>已发 开始提醒</th><th>已发 未完成提醒</th></tr></thead><tbody>' +
+      (d.days || []).map(function (r) {
+        return '<tr><td>' + esc(r.day) + '</td><td>' + esc(r.hooks) + '</td><td>' + esc(r.pushOn) + '</td><td>' + esc(r.validTopics) + '</td><td>' + esc(r.sent.daily) + '</td><td>' + esc(r.sent.start) + '</td><td>' + esc(r.sent.due) + '</td></tr>';
+      }).join('') + '</tbody></table>';
+    html += '<div class="note">只读诊断：额度只靠用户在小程序内订阅补充（一次订阅 +1 次）；「有效目标」＝当日开启每日精选且已同步话题钩子的账号；sent_log 仅保留近 7 天。</div>';
+    box.innerHTML = html;
+  }
+
   function loadOverview() {
     api('/api/admin/overview').then(function (r) {
-      if (!r.ok) { $('overviewCards').innerHTML = '<div class="empty">加载失败</div>'; $('wxBox').innerHTML = ''; return; }
+      if (!r.ok) { $('overviewCards').innerHTML = '<div class="empty">加载失败</div>'; $('wxBox').innerHTML = ''; $('remindDiagBox').innerHTML = ''; return; }
       renderWx(r.data.wx);
+      renderRemindDiag(r.data.reminderDiag);
       $('overviewCards').innerHTML = OV.map(function (it) {
         var v = r.data[it[0]];
         return '<div class="card"><div class="num">' + (v == null ? '暂无' : esc(v)) + '</div><div class="label">' + it[1] + '</div></div>';

@@ -230,17 +230,33 @@ router.get('/overview', async (req, res) => {
   const now = Date.now();
   // 注册用户口径：parent_records 为现行账号体系（海报/试卷/提醒均以 account_id 关联）
   await metric('totalUsers', () => countValue('SELECT COUNT(*) AS n FROM parent_records'));
-  // 使用用户口径（含未登录）：各业务表 account_id 的并集去重——凡在服务端留下过独立 ID 的都算，
+  // 总用户口径（含未登录）：各业务表 account_id 的并集去重——凡在服务端留下过独立 ID 的都算，
   // 含只用过埋点/城市需求/反馈等入口、从未注册的游客。剔除官方库账号与部署验证测试号。
   // 旧 users 表为另一套 ID 体系（id/open_id），与 account_id 无法可靠对齐，未并入（其行数另有 usersTableCount 单独展示）。
-  await metric('usageUsers', async () => {
-    const sources = ['parent_records', 'analytics_events', 'weekend_city_demand', 'feedbacks',
-      'reminder_subs', 'reminder_tasks', 'reminder_sent_log', 'reminder_daily_hooks', 'exams', 'posters'];
+  // 活跃口径（DAU/MAU）与总用户同源同并集，仅按各表时间字段（均为 epoch 毫秒）过滤时段：
+  // 有更新时间语义的表用 updated_at，其余用记录产生时间；reminder_sent_log 用实际发送时间 sent_at。
+  const USAGE_SOURCES = [
+    ['parent_records', 'updated_at'],
+    ['analytics_events', 'server_ts'],
+    ['weekend_city_demand', 'created_at'],
+    ['feedbacks', 'created_at'],
+    ['reminder_subs', 'updated_at'],
+    ['reminder_tasks', 'updated_at'],
+    ['reminder_sent_log', 'sent_at'],
+    ['reminder_daily_hooks', 'updated_at'],
+    ['exams', 'created_at'],
+    ['posters', 'created_at']
+  ];
+  const usageIdSet = async (sinceTs) => {
     const ids = new Set();
     let okSources = 0;
-    for (const t of sources) {
+    for (const pair of USAGE_SOURCES) {
+      const t = pair[0];
+      const timeCol = pair[1];
       try {
-        const rows = await db.allSql("SELECT DISTINCT account_id AS id FROM " + t + " WHERE account_id <> ''");
+        const rows = sinceTs == null
+          ? await db.allSql("SELECT DISTINCT account_id AS id FROM " + t + " WHERE account_id <> ''")
+          : await db.allSql("SELECT DISTINCT account_id AS id FROM " + t + " WHERE account_id <> '' AND " + timeCol + ' >= ?', [sinceTs]);
         okSources++;
         (rows || []).forEach((r) => { if (r.id) ids.add(String(r.id)); });
       } catch (e) { /* 单表缺失（如城市需求表懒建未触发）时跳过该来源，不拖垮整体 */ }
@@ -248,8 +264,12 @@ router.get('/overview', async (req, res) => {
     if (!okSources) throw new Error('no usage source available');
     ids.delete(OFFICIAL_ACCOUNT_ID);
     ids.delete('deploy-verify');
-    return ids.size;
-  });
+    return ids;
+  };
+  await metric('usageUsers', async () => (await usageIdSet(null)).size);
+  // DAU：今日（Asia/Shanghai 自然日）内留下过记录的独立账号/设备；MAU：近 30 个自然日（含今日）同口径。
+  await metric('dau', async () => (await usageIdSet(shanghaiDayStart(0))).size);
+  await metric('mau', async () => (await usageIdSet(shanghaiDayStart(-29))).size);
   await metric('usersTableCount', () => countValue('SELECT COUNT(*) AS n FROM users'));
   await metric('newUsers7d', () => countValue('SELECT COUNT(*) AS n FROM parent_records WHERE created_at >= ?', [now - 7 * 86400 * 1000]));
   await metric('reminderSubscribers', () => countValue('SELECT COUNT(DISTINCT account_id) AS n FROM reminder_subs'));

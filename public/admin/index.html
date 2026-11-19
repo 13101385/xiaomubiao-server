@@ -250,7 +250,7 @@
 
   /* ---------- 概览 ---------- */
   var OV = [
-    ['totalUsers', '注册用户'], ['newUsers7d', '近 7 天新增'], ['reminderSubscribers', '提醒订阅人数'],
+    ['totalUsers', '注册用户'], ['usageUsers', '使用用户（含未登录）'], ['newUsers7d', '近 7 天新增'], ['reminderSubscribers', '提醒订阅人数'],
     ['yesterdayPushSent', '昨日推送送达'], ['pendingFeedbacks', '待处理反馈'], ['officialPosters', '官方手抄报'],
     ['totalExams', '出题总数']
   ];
@@ -263,6 +263,7 @@
       }).join('');
       var notes = [];
       if (r.data.unavailable && r.data.unavailable.length) notes.push('以下指标暂时取不到（数据源缺失，已按实显示为空）：' + r.data.unavailable.join('、'));
+      notes.push('「使用用户」口径：在服务器留下过记录的独立账号/设备去重，含未登录游客（已剔除官方与测试账号）；与微信官方「累计用户」不是同一口径。');
       notes.push('说明：每个家庭的任务、积分、打卡明细保存在家长手机本地，后端看不到，本页不展示这类数据。');
       $('overviewNote').textContent = notes.join(' ');
     });

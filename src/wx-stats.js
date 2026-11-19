@@ -6,7 +6,9 @@
  *
  * 数据链路：
  * - 用 WX_APPID/WX_APPSECRET（env）经 wxapi 换 access_token，
- *   调数据分析接口 getweanalysisappiddailyvisittrend 按 30 天分片拉取（单次跨度上限 30 天）；
+ *   调数据分析接口 getweanalysisappiddailyvisittrend 逐日拉取（官方文档限定该接口单次
+ *   只查 1 天数据：begin_date 必须等于 end_date，end_date 最大值为昨日；跨度超限回
+ *   errcode 61501 date range error）；
  * - 累计用户 = 各日 visit_uv_new 之和；昨日新增/昨日访问取最近一日（上海时区昨日）的
  *   visit_uv_new / visit_uv。
  * - 结果落 wx_daily_stats（按日一行）+ wx_stats_sync（单行同步状态：尝试/成功时间、errcode/errmsg）。
@@ -23,7 +25,7 @@ const wxapi = require('./wxapi');
 const { config } = require('./config');
 
 const TARGET_USERS = 500;           // 流量主开通门槛：累计独立访客
-const CHUNK_DAYS = 30;              // datacube 单次请求最大跨度（天）
+const CHUNK_DAYS = 1;               // datacube 单次请求跨度：官方限定只查 1 天（begin=end），故逐日拉取
 const BACKFILL_DAYS = 400;          // 首次回填窗口（覆盖上线至今；无数据日返回 0，不影响求和）
 const DAILY_SYNC_MIN = 8 * 60 + 30; // 每日同步触发时间 08:30（上海）
 const DAILY_RETRY_MS = 30 * 60 * 1000;
@@ -96,7 +98,7 @@ function wxError(errcode, errmsg) {
   return err;
 }
 
-/** 拉一个分片（beginDay..endDay，'YYYY-MM-DD'，跨度 ≤ CHUNK_DAYS），返回原始 list */
+/** 拉一个分片（beginDay..endDay，'YYYY-MM-DD'，跨度 ≤ CHUNK_DAYS；当前即单日 begin=end），返回原始 list */
 async function fetchTrendChunk(token, beginDay, endDay) {
   let res;
   try {

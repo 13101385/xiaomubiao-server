@@ -24,6 +24,7 @@ const crypto = require('crypto');
 const router = express.Router();
 const db = require('../db');
 const wxStats = require('../wx-stats');
+const { TEMPLATES } = require('../reminder-config');
 
 const COOKIE_NAME = 'admin_session';
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -278,6 +279,53 @@ router.get('/overview', async (req, res) => {
   await metric('officialPosters', () => countValue('SELECT COUNT(*) AS n FROM posters WHERE account_id = ?', [OFFICIAL_ACCOUNT_ID]));
   await metric('totalExams', () => countValue('SELECT COUNT(*) AS n FROM exams'));
   await metric('yesterdayPushSent', () => countValue('SELECT COUNT(*) AS n FROM reminder_sent_log WHERE day = ?', [shanghaiDay(-1)]));
+  // 提醒诊断（只读，2026-11-19 每日推送黑盒修复）：订阅账号数、备忘录模板总剩余额度、
+  // 近 7 天每日钩子行（开启数/有效目标）与 sent_log 分 kind 计数；只聚合展示，不写库、不动订阅逻辑。
+  // 表缺失时 metric 兜底返回 null，不拖垮概览。
+  await metric('reminderDiag', async () => {
+    const days = [];
+    for (let i = 6; i >= 0; i--) days.push(shanghaiDay(-i));
+    const subs = await countValue('SELECT COUNT(DISTINCT account_id) AS n FROM reminder_subs');
+    const startQuota = await countValue('SELECT COALESCE(SUM(quota), 0) AS n FROM reminder_subs WHERE template_id = ?', [TEMPLATES.start]);
+    const dueQuota = await countValue('SELECT COALESCE(SUM(quota), 0) AS n FROM reminder_subs WHERE template_id = ?', [TEMPLATES.due]);
+    const zeroQuotaAccounts = await countValue('SELECT COUNT(*) AS n FROM reminder_subs WHERE template_id = ? AND quota <= 0', [TEMPLATES.start]);
+    const todayTargets = await countValue(
+      "SELECT COUNT(*) AS n FROM reminder_daily_hooks WHERE date = ? AND daily_push = 1 AND topic_q != ''",
+      [shanghaiDay(0)]
+    );
+    const hookRows = await db.allSql(
+      'SELECT date AS day, COUNT(*) AS hooks, ' +
+      'SUM(CASE WHEN daily_push = 1 THEN 1 ELSE 0 END) AS pushOn, ' +
+      "SUM(CASE WHEN daily_push = 1 AND topic_q != '' THEN 1 ELSE 0 END) AS valid " +
+      'FROM reminder_daily_hooks WHERE date >= ? GROUP BY date',
+      [days[0]]
+    );
+    const sentRows = await db.allSql(
+      'SELECT day, kind, COUNT(*) AS n FROM reminder_sent_log WHERE day >= ? GROUP BY day, kind',
+      [days[0]]
+    );
+    const hooksByDay = {};
+    (hookRows || []).forEach((r) => { hooksByDay[r.day] = { hooks: r.hooks || 0, pushOn: r.pushOn || 0, valid: r.valid || 0 }; });
+    const sentByDay = {};
+    (sentRows || []).forEach((r) => {
+      const d = sentByDay[r.day] || (sentByDay[r.day] = { daily: 0, start: 0, due: 0 });
+      if (r.kind === 'daily' || r.kind === 'start' || r.kind === 'due') d[r.kind] = r.n || 0;
+    });
+    return {
+      subscribers: subs || 0,
+      startQuotaTotal: startQuota || 0,
+      dueQuotaTotal: dueQuota || 0,
+      zeroQuotaAccounts: zeroQuotaAccounts || 0,
+      todayTargets: todayTargets || 0,
+      days: days.map((day) => ({
+        day,
+        hooks: (hooksByDay[day] || {}).hooks || 0,
+        pushOn: (hooksByDay[day] || {}).pushOn || 0,
+        validTopics: (hooksByDay[day] || {}).valid || 0,
+        sent: sentByDay[day] || { daily: 0, start: 0, due: 0 }
+      }))
+    };
+  });
   // 微信官方口径（主位，流量主考核）：读 wx-stats 同步表；同步失败时返回 status='error' 的诚实状态，
   // 绝不用上方自有口径数字填充微信区。
   await metric('wx', () => wxStats.getWxOverview());

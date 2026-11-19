@@ -23,6 +23,7 @@ const express = require('express');
 const crypto = require('crypto');
 const router = express.Router();
 const db = require('../db');
+const wxStats = require('../wx-stats');
 
 const COOKIE_NAME = 'admin_session';
 const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -277,6 +278,9 @@ router.get('/overview', async (req, res) => {
   await metric('officialPosters', () => countValue('SELECT COUNT(*) AS n FROM posters WHERE account_id = ?', [OFFICIAL_ACCOUNT_ID]));
   await metric('totalExams', () => countValue('SELECT COUNT(*) AS n FROM exams'));
   await metric('yesterdayPushSent', () => countValue('SELECT COUNT(*) AS n FROM reminder_sent_log WHERE day = ?', [shanghaiDay(-1)]));
+  // 微信官方口径（主位，流量主考核）：读 wx-stats 同步表；同步失败时返回 status='error' 的诚实状态，
+  // 绝不用上方自有口径数字填充微信区。
+  await metric('wx', () => wxStats.getWxOverview());
   data.unavailable = unavailable;
   res.json({ ok: true, data });
 });

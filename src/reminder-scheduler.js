@@ -114,11 +114,27 @@ async function scanDueReminders(now) {
 async function scanDailyPush(now) {
   if (now.minutes < DAILY_START_MIN || now.minutes > DAILY_END_MIN) return;
   const targets = await db.listDailyPushTargets(now.date);
+  // 黑盒修复（2026-11-19）：目标为 0 / 无订阅 / 额度为 0 时此前直接 continue、无任何日志，
+  // 漏发完全隐形；此处逐项留痕，成功日志保持不变
+  if (!targets.length) {
+    console.warn('[REMINDER] 每日精选无目标:', now.date, '目标数 0（当日无开启每日精选且带话题钩子的账号）');
+    return;
+  }
+  let sent = 0, alreadySent = 0, noSub = 0, noQuota = 0;
   for (const h of targets) {
-    if (await db.hasSentLog(h.account_id, 'daily', now.date)) continue;
+    if (await db.hasSentLog(h.account_id, 'daily', now.date)) { alreadySent++; continue; }
     // 每日精选复用开始提醒模板：查同一模板的 openid 与共用额度池
     const sub = await db.getReminderSub(h.account_id, TEMPLATES.start);
-    if (!sub || !sub.open_id || sub.quota <= 0) continue;
+    if (!sub || !sub.open_id) {
+      console.warn('[REMINDER] 每日精选无订阅，跳过:', h.account_id, '无备忘录任务提醒模板订阅行');
+      noSub++;
+      continue;
+    }
+    if (sub.quota <= 0) {
+      console.warn('[REMINDER] 每日精选额度为 0，跳过:', h.account_id, 'quota', sub.quota);
+      noQuota++;
+      continue;
+    }
     const ok = await sendAndSettle(
       h.account_id, TEMPLATES.start, sub.open_id,
       buildDailyData(h.topic_q, now.date),
@@ -126,8 +142,12 @@ async function scanDailyPush(now) {
     );
     if (ok) {
       await db.addSentLog(h.account_id, 'daily', now.date);
+      sent++;
       console.log('[REMINDER] 每日精选已发送:', h.account_id, h.topic_q);
     }
+  }
+  if (noSub || noQuota) {
+    console.warn('[REMINDER] 每日精选本轮小结:', now.date, '目标', targets.length, '已发', sent, '已发过', alreadySent, '无订阅', noSub, '额度为 0', noQuota);
   }
 }
 

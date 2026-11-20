@@ -30,6 +30,7 @@ const chatRoutes = require('./routes/chat');
 const reminderRoutes = require('./routes/reminder'); const feedbackRoutes = require('./routes/feedback');
 const homeworkRoutes = require('./routes/homework');
 const weekendRoutes = require('./routes/weekend');
+const welcomeRoutes = require('./routes/welcome');
 const analyticsRoutes = require('./routes/analytics');
 const adminRoutes = require('./routes/admin');
 const { startReminderScheduler } = require('./reminder-scheduler');
@@ -91,10 +92,13 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/reminder', reminderRoutes);
 app.use('/api/homework', homeworkRoutes);
 app.use('/api/weekend', weekendRoutes);
+app.use('/api/welcome', welcomeRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/admin', express.static(path.join(__dirname, '..', 'public', 'admin'))); app.use('/api/admin', adminRoutes); app.use('/api', feedbackRoutes);
 // 睡前故事音频静态托管：story-audio/<故事id>.mp3（AI 合成语音，文件带 ID3 标识）
 app.use('/story-audio', express.static(path.join(__dirname, '..', 'story-audio'), { maxAge: '7d', immutable: true }));
+// 首页欢迎宣传位图片静态托管：public/welcome/<文件名>（文件名带版本号，换图升名；不设 immutable 以便同名订正）
+app.use('/welcome', express.static(path.join(__dirname, '..', 'public', 'welcome'), { maxAge: '1d' }));
 
 // 错误处理
 app.use((err, req, res, next) => {

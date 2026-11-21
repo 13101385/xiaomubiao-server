@@ -560,16 +560,20 @@ router.post('/generate-image', async (req, res) => {
 /**
  * POST /api/poster/save
  * 保存本地模板方案（不调 AI、不限额）
- * body: { accountId, openId?, theme, grade, title?, content }
+ * body: { accountId, openId?, theme, grade, title?, content, source? }
+ * PM-39：模板页保存成品图模板时带 source='image' 且不带 grade（模板按口径与年级无关），
+ * 此类记录放行无 grade（落库为空串）；其余路径（本地方案保存）仍须合法年级。
  */
 router.post('/save', async (req, res) => {
-  const { accountId, openId = '', theme, grade, title = '', content } = req.body || {};
+  const { accountId, openId = '', theme, grade, title = '', content, source = '' } = req.body || {};
 
   // 参数校验
   if (!accountId) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
   if (!theme || !String(theme).trim()) return res.status(400).json({ ok: false, msg: '缺少 theme' });
   if (String(theme).length > 50) return res.status(400).json({ ok: false, msg: '主题过长（最多50字）' });
-  if (!GRADES.includes(grade)) return res.status(400).json({ ok: false, msg: '不支持的年级' });
+  const isImageSave = source === 'image';
+  if (!isImageSave && !GRADES.includes(grade)) return res.status(400).json({ ok: false, msg: '不支持的年级' });
+  const savedGrade = GRADES.includes(grade) ? grade : '';
   if (!content) return res.status(400).json({ ok: false, msg: '缺少 content' });
 
   // content 允许是对象或 JSON 字符串
@@ -591,10 +595,10 @@ router.post('/save', async (req, res) => {
       accountId,
       openId,
       theme: String(theme).trim(),
-      grade,
+      grade: savedGrade,
       title: String(title).trim() || (String(theme).trim() + '手抄报'),
-      source: 'template',
-      config: JSON.stringify({ theme, grade }),
+      source: isImageSave ? 'image' : 'template',
+      config: JSON.stringify({ theme, grade: savedGrade }),
       content: JSON.stringify(contentObj),
       createdAt: Date.now()
     };

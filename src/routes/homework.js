@@ -3,6 +3,11 @@
  *
  * POST /api/homework/grade-photo  家长上传作业照片（base64），Agnes 视觉逐题给
  *                                 对错建议 + 一句话解析，返回结构化建议供家长逐题确认。
+ * POST /api/homework/recognize-photo  拍照只识别（PM-83，2026-11-21）：同一视觉链路，
+ *                                 只把题目逐题转写成 {题干, 孩子作答} 返回，整理成判题页
+ *                                 交家长逐题判对错。本接口不判断对错：提示词不问对错、
+ *                                 归一化只出 no/stem/studentAnswer，模型即使返回判定类
+ *                                 字段也在服务端剥离，绝不下发、绝不落库。
  * GET  /api/homework/tmp/:name   临时图片出口：照片落临时目录换公网 URL 供 Agnes 拉取，
  *                                 处理完成后立即删除（handler 内白名单 + TTL 双保险）。
  *
@@ -80,8 +85,32 @@ function buildPrompt(subject) {
   ].join('\n');
 }
 
-/** 默认 Agnes 调用（OpenAI 兼容 chat/completions，image_url 内容块）。返回模型文本。 */
-async function defaultAgnesVision(imageUrl, subject) {
+/**
+ * 构造「只识别」提示词（PM-83）：只转写题目与孩子作答，明确不判断对错、不给答案、
+ * 不给解析。判对错完全归家长，提示词层面先断掉判定语义。
+ */
+function buildRecognizePrompt(subject) {
+  const subj = SUBJECTS.includes(subject) ? subject : '';
+  return [
+    '你是一位作业照片转写助手，正在协助家长把' + (subj ? '「' + subj + '」' : '') + '作业照片里的题目逐题转写成文字。',
+    '你的任务只有转写：把每道题的题干和学生写下的作答原样抄录出来。',
+    '不要判断学生作答是对是错，不要给出正确答案，不要给任何解析、点评或建议。',
+    '',
+    '只输出严格 JSON（不要任何其他文字、不要 markdown 代码块），格式如下：',
+    '{"items":[{"no":1,"stem":"题目原文（简要转写）","studentAnswer":"学生写下的答案"}]}',
+    '',
+    '字段要求：',
+    '- no：题号，按照片中顺序从 1 开始；',
+    '- stem：题目原文，简要转写，不超过 120 字；题目里有空格/括号待填的，原样保留；',
+    '- studentAnswer：学生写在答案位置的内容，原样转写；没写或看不清写空字符串，不要猜测、不要补全；',
+    '只输出 stem 与 studentAnswer 两个内容字段，不要输出任何其他字段。',
+    '最多识别 30 题。'
+  ].join('\n');
+}
+
+/** 默认 Agnes 调用（OpenAI 兼容 chat/completions，image_url 内容块）。返回模型文本。
+ * promptText 可选：不传走批改提示词（grade-photo 既有口径）；识别端点传只识别提示词。 */
+async function defaultAgnesVision(imageUrl, subject, promptText) {
   const { apiKey, baseURL, model, timeoutMs } = config.agnes;
   if (!apiKey) {
     const err = new Error('服务器未配置 AGNES_AI_API_KEY');
@@ -95,7 +124,7 @@ async function defaultAgnesVision(imageUrl, subject) {
       {
         role: 'user',
         content: [
-          { type: 'text', text: buildPrompt(subject) },
+          { type: 'text', text: promptText || buildPrompt(subject) },
           { type: 'image_url', image_url: { url: imageUrl } }
         ]
       }
@@ -127,8 +156,9 @@ let agnesVisionCaller = defaultAgnesVision;
 const ARK_BASE = 'https://ark.cn-beijing.volces.com/api/v3';
 const ARK_DEFAULT_MODEL = 'doubao-seed-2-1-pro-260915';
 
-/** 默认方舟调用（OpenAI 兼容 chat/completions，图片以 base64 data URL 直传）。返回模型文本。 */
-async function defaultArkVision(dataUrl, subject) {
+/** 默认方舟调用（OpenAI 兼容 chat/completions，图片以 base64 data URL 直传）。返回模型文本。
+ * promptText 可选，口径同 defaultAgnesVision。 */
+async function defaultArkVision(dataUrl, subject, promptText) {
   const apiKey = process.env.ARK_API_KEY || '';
   if (!apiKey) {
     const err = new Error('服务器未配置 ARK_API_KEY');
@@ -143,7 +173,7 @@ async function defaultArkVision(dataUrl, subject) {
       {
         role: 'user',
         content: [
-          { type: 'text', text: buildPrompt(subject) },
+          { type: 'text', text: promptText || buildPrompt(subject) },
           { type: 'image_url', image_url: { url: dataUrl } }
         ]
       }
@@ -255,6 +285,35 @@ function normalizeItems(parsed) {
   return items;
 }
 
+/**
+ * 「只识别」结果归一化（PM-83）：只出 {no, stem, studentAnswer} 三个字段——模型即使
+ * 返回 verdict/explanation/cause/confidence 等判定类字段也一律剥离，绝不下发。
+ * 题号不信任模型给的 no，按顺序重编 1..N，保证前端判题页行列连续。
+ */
+function normalizeRecognizedItems(parsed) {
+  const raw = Array.isArray(parsed) ? parsed : (parsed && Array.isArray(parsed.items) ? parsed.items : null);
+  if (!raw) {
+    const err = new Error('AI 返回内容缺少 items 数组');
+    err.code = 'AGNES_BAD_JSON';
+    throw err;
+  }
+  const items = [];
+  raw.slice(0, MAX_ITEMS).forEach((it) => {
+    if (!it || typeof it !== 'object') return;
+    items.push({
+      no: items.length + 1,
+      stem: clampText(it.stem != null ? it.stem : (it.question != null ? it.question : it.title), 300),
+      studentAnswer: clampText(it.studentAnswer != null ? it.studentAnswer : (it.answer != null ? it.answer : it.student_answer), 200)
+    });
+  });
+  if (!items.length) {
+    const err = new Error('AI 没有识别出题目');
+    err.code = 'AGNES_BAD_JSON';
+    throw err;
+  }
+  return items;
+}
+
 /* ==================== 临时图片 ==================== */
 
 function ensureTmpDir() {
@@ -346,6 +405,28 @@ async function gradeViaAgnes(buf, ext, req, subject) {
   }
 }
 
+/** 方舟只识别：图片 base64 直传 → 归一化识别项（无判定字段） */
+async function recognizeViaArk(buf, ext, subject) {
+  const dataUrl = 'data:image/' + (ext === 'png' ? 'png' : 'jpeg') + ';base64,' + buf.toString('base64');
+  const text = await arkVisionCaller(dataUrl, subject, buildRecognizePrompt(subject));
+  return normalizeRecognizedItems(extractJson(text));
+}
+
+/** Agnes 只识别：照片落临时目录换公网 URL，处理完（无论成败）即删 → 归一化识别项 */
+async function recognizeViaAgnes(buf, ext, req, subject) {
+  ensureTmpDir();
+  const name = crypto.randomBytes(16).toString('hex') + '.' + ext;
+  const tmpFile = path.join(TMP_DIR, name);
+  fs.writeFileSync(tmpFile, buf);
+  try {
+    const imageUrl = publicBase(req) + '/api/homework/tmp/' + name;
+    const text = await agnesVisionCaller(imageUrl, subject, buildRecognizePrompt(subject));
+    return normalizeRecognizedItems(extractJson(text));
+  } finally {
+    fs.unlink(tmpFile, () => {});
+  }
+}
+
 /* ==================== 路由 ==================== */
 
 /** 临时图出口：仅供 Agnes 拉取本次照片，文件名随机不可猜测，过期即删 */
@@ -428,9 +509,71 @@ router.post('/grade-photo', async (req, res) => {
   }
 });
 
+/**
+ * POST /api/homework/recognize-photo（PM-83：拍照只识别、家长判对错）
+ * 入参：{ accountId, imageBase64, subject? }
+ * 成功：{ ok:true, data:{ items:[{no,stem,studentAnswer}], count, provider } }
+ *   ——items 只含转写字段，全链零判定：无 verdict/explanation/cause/confidence。
+ * 失败：{ ok:false, code, msg }（口径同 grade-photo，文案按识别场景）
+ * 限流与 grade-photo 共用同一账号桶（同为视觉调用，合计 20 次/小时封顶）。
+ */
+router.post('/recognize-photo', async (req, res) => {
+  const body = req.body || {};
+  const accountId = typeof body.accountId === 'string' ? body.accountId.slice(0, 128) : '';
+  if (!accountId) {
+    return res.status(400).json({ ok: false, code: 'PARAM', msg: '缺少账号信息，请重新登录后再试' });
+  }
+  const subject = SUBJECTS.includes(body.subject) ? body.subject : '';
+
+  const rateKey = accountId || ('ip:' + (req.ip || 'unknown'));
+  if (!rateAllowed(rateKey)) {
+    return res.status(429).json({ ok: false, code: 'RATE_LIMITED', msg: '拍照识别太频繁了，请稍后再试' });
+  }
+
+  try {
+    sweepTmp();
+    const { buf, ext } = decodeImage(body.imageBase64);
+    let items = null;
+    let usedProvider = '';
+    if (visionProvider() === 'ark') {
+      try {
+        items = await recognizeViaArk(buf, ext, subject);
+        usedProvider = 'ark';
+      } catch (arkErr) {
+        // 兜底口径同 grade-photo：方舟任何失败自动回落 Agnes 再试一次
+        console.error('[HOMEWORK] ark recognize failed, fallback to agnes:', (arkErr && (arkErr.code || arkErr.message)) || 'unknown');
+        items = await recognizeViaAgnes(buf, ext, req, subject);
+        usedProvider = 'agnes';
+      }
+    } else {
+      items = await recognizeViaAgnes(buf, ext, req, subject);
+      usedProvider = 'agnes';
+    }
+    res.json({ ok: true, data: { items, count: items.length, provider: usedProvider } });
+  } catch (err) {
+    const code = err && err.code ? err.code : '';
+    if (code === 'PARAM') {
+      return res.status(400).json({ ok: false, code, msg: err.message });
+    }
+    if (code === 'IMAGE_INVALID') {
+      return res.status(400).json({ ok: false, code, msg: err.message });
+    }
+    if (/_NOT_CONFIGURED$/.test(code)) {
+      console.error('[HOMEWORK] vision provider not configured:', code);
+      return res.status(500).json({ ok: false, code, msg: '拍照识别暂未开通，请先用手动快批' });
+    }
+    if (/_BAD_JSON$/.test(code)) {
+      console.error('[HOMEWORK] recognize bad json:', err.message);
+      return res.status(502).json({ ok: false, code: 'AI_BAD_JSON', msg: '没看清这张照片，请拍清楚一点后重试' });
+    }
+    console.error('[HOMEWORK] recognize-photo error:', err && err.message);
+    return res.status(502).json({ ok: false, code: 'AI_FAILED', msg: '识别失败了，请稍后重试或改用手动快批' });
+  }
+});
+
 module.exports = router;
 /* 自测钩子（不影响线上行为）：注入 mock Agnes 调用 / 重置限流 / 暴露纯函数 */
 module.exports.__setAgnesVisionCaller = (fn) => { agnesVisionCaller = typeof fn === 'function' ? fn : defaultAgnesVision; };
 module.exports.__setArkVisionCaller = (fn) => { arkVisionCaller = typeof fn === 'function' ? fn : defaultArkVision; };
 module.exports.__resetRateLimit = () => rateMap.clear();
-module.exports._internals = { buildPrompt, extractJson, normalizeItems, decodeImage, TMP_DIR, TMP_NAME_RE };
+module.exports._internals = { buildPrompt, buildRecognizePrompt, extractJson, normalizeItems, normalizeRecognizedItems, decodeImage, TMP_DIR, TMP_NAME_RE };

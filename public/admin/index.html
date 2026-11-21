@@ -525,7 +525,15 @@
     });
   }
   function doDbCleanup() {
-    if (!window.confirm('确定清理无用图片数据？只删记录已不存在的残留图片，不影响在用海报。')) return;
+    var btn = $('dbCleanupBtn');
+    if (!doDbCleanup._armed) {
+      doDbCleanup._armed = true;
+      btn.textContent = '再点一次确认清理';
+      setTimeout(function () { doDbCleanup._armed = false; var b = $('dbCleanupBtn'); if (b) b.textContent = '清理无用图片数据'; }, 8000);
+      return;
+    }
+    doDbCleanup._armed = false;
+    btn.textContent = '清理无用图片数据';
     var out = $('dbCleanupResult');
     out.textContent = '清理中…（大文件可能需要一会儿）';
     api('/api/admin/db-cleanup', { method: 'POST' }).then(function (r) {

@@ -117,6 +117,7 @@ async function pollListStatus(accountId, examId, want, timeoutMs) {
   assert(examRoute.friendlyFailReason(new Error('服务器未配置 AGNES_AI_API_KEY')).includes('暂时不可用'), 'friendlyFailReason：未配置 → 服务暂时不可用');
   assert(examRoute.friendlyFailReason(new Error('AI 返回内容解析失败')).includes('请重试'), 'friendlyFailReason：解析失败 → 请重试');
   assert(examRoute.MAX_GENERATING_PER_ACCOUNT === 3, '并发上限常量 = 3');
+  assert(examRoute.MAX_EXAM_RETRIES === 5, 'QA-R1：单份试卷重试上限常量 = 5（防无限重试绕过每日限额）');
 
   const fake = http.createServer(fakeAgnes);
   await new Promise(r => fake.listen(FAKE_PORT, r));
@@ -207,6 +208,13 @@ async function pollListStatus(accountId, examId, want, timeoutMs) {
     assert(fourth.status === 429 && /正在生成/.test((fourth.json && fourth.json.msg) || ''), '第 4 份被并发上限 429 拒：' + (fourth.json && fourth.json.msg));
     const capReady = await pollListStatus('cap-acc', capSubs[0].json.examId, 'ready', 60000);
     assert(!!capReady, '慢生成最终完成（并发管道无死锁）');
+
+    /* ---- 8) QA-R1：并发齐发不突破上限（旧版 TOCTOU 实测 6 齐发被接受 4 份） ---- */
+    const burst = await Promise.all([0, 1, 2, 3].map(() => httpJson('POST', `http://127.0.0.1:${APP_PORT}/api/exam/generate`, {
+      accountId: 'burst-acc', subject: '数学', grade: '小学三年级', difficulty: '中等', knowledge: '__SLOW__', choice: 1, fill: 1
+    })));
+    const burstOk = burst.filter(x => x.json && x.json.ok).length;
+    assert(burstOk === 3, `并发齐发恰好接受 3 份（实际 ${burstOk}，临界区串行化后不突破上限）`);
   } finally {
     app.kill('SIGKILL');
     fake.close();

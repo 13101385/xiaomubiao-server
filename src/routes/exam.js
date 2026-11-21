@@ -267,6 +267,20 @@ async function topUpExam(exam, effCounts, ctx, callJson) {
 // PM-87：同一账号同时生成中的试卷上限（防连点/滥用烧上游额度）
 const MAX_GENERATING_PER_ACCOUNT = 3;
 
+// QA 5 轮第 1 轮：同一份试卷的失败重试次数上限。重试不新建记录、不计每日限额，
+// 无上限时可对同一份 failed 无限重试绕过 DAILY_LIMIT 烧上游调用，故按份封顶。
+const MAX_EXAM_RETRIES = 5;
+
+// QA 5 轮第 1 轮：提交临界区串行化——「查限额/并发计数 → 落库/翻转状态」必须原子，
+// 否则多份齐发会同时通过计数检查、突破并发上限（实测 6 齐发被接受 4 份）。
+// 单进程部署下一条模块级 promise 链即可；临界区只含 DB 读写，不含生成本身。
+let submitChain = Promise.resolve();
+function withSubmitLock(fn) {
+  const run = submitChain.then(fn, fn);
+  submitChain = run.catch(() => {});
+  return run;
+}
+
 /** PM-87：把内部错误转成家长可读的失败原因（落 failed 状态时展示，并给重试入口） */
 function friendlyFailReason(err) {
   const msg = (err && err.message) || '生成失败';
@@ -386,19 +400,6 @@ router.post('/generate', async (req, res) => {
   if (totalQuestions > 50) return res.status(400).json({ ok: false, msg: '题目数量过多（最多50题）' });
 
   try {
-    // 每日限额（generating/failed 记录同样计入：它们同样消耗了上游调用，防费用失控口径不变）
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    const todayCount = await db.countExamsToday(accountId, startOfDay.getTime());
-    if (todayCount >= DAILY_LIMIT) {
-      return res.status(429).json({ ok: false, msg: '今日生成已达上限（' + DAILY_LIMIT + ' 份），明天再来吧' });
-    }
-    // 并发上限：同账号同时生成中的份数
-    const generating = await db.countGeneratingExams(accountId);
-    if (generating >= MAX_GENERATING_PER_ACCOUNT) {
-      return res.status(429).json({ ok: false, msg: '已有 ' + generating + ' 份试卷正在生成，等生成完再试吧' });
-    }
-
     const record = {
       id: 'exam_' + crypto.randomBytes(8).toString('hex'),
       accountId,
@@ -412,7 +413,24 @@ router.post('/generate', async (req, res) => {
       failReason: '',
       createdAt: Date.now()
     };
-    await db.createExam(record);
+    // 限额/并发检查与落库在串行临界区内完成（QA 5 轮第 1 轮：防齐发 TOCTOU 突破上限）
+    const gate = await withSubmitLock(async () => {
+      // 每日限额（generating/failed 记录同样计入：它们同样消耗了上游调用，防费用失控口径不变）
+      const startOfDay = new Date();
+      startOfDay.setHours(0, 0, 0, 0);
+      const todayCount = await db.countExamsToday(accountId, startOfDay.getTime());
+      if (todayCount >= DAILY_LIMIT) {
+        return { msg: '今日生成已达上限（' + DAILY_LIMIT + ' 份），明天再来吧' };
+      }
+      // 并发上限：同账号同时生成中的份数
+      const generating = await db.countGeneratingExams(accountId);
+      if (generating >= MAX_GENERATING_PER_ACCOUNT) {
+        return { msg: '已有 ' + generating + ' 份试卷正在生成，等生成完再试吧' };
+      }
+      await db.createExam(record);
+      return null;
+    });
+    if (gate) return res.status(429).json({ ok: false, msg: gate.msg });
 
     // 立即返回，生成脱钩在后台跑（客户端断开不影响；进程重启遗留由启动清扫置 failed）
     res.json({ ok: true, examId: record.id, status: 'generating' });
@@ -438,12 +456,26 @@ router.post('/:id/retry', async (req, res) => {
     if (row.status !== 'failed') {
       return res.status(409).json({ ok: false, msg: row.status === 'generating' ? '这份试卷正在生成中' : '这份试卷已生成成功，不用重试' });
     }
-    const generating = await db.countGeneratingExams(accountId);
-    if (generating >= MAX_GENERATING_PER_ACCOUNT) {
-      return res.status(429).json({ ok: false, msg: '已有 ' + generating + ' 份试卷正在生成，等生成完再试吧' });
+    // QA 5 轮第 1 轮：重试次数按份封顶（计数存 config.retryCount），防无限重试绕过每日限额
+    let cfg = {};
+    try { cfg = JSON.parse(row.config || '{}'); } catch (e) {}
+    const retryCount = Number(cfg.retryCount) || 0;
+    if (retryCount >= MAX_EXAM_RETRIES) {
+      return res.status(429).json({ ok: false, msg: '这份试卷已重试 ' + MAX_EXAM_RETRIES + ' 次还没成功，请重新生成一份吧' });
     }
-    const flipped = await db.resetExamGenerating(req.params.id);
-    if (!flipped) return res.status(409).json({ ok: false, msg: '状态已变化，请刷新列表再试' });
+    // 并发检查＋状态翻转＋计数回写在串行临界区内完成（与 generate 共用同一把锁）
+    const gate = await withSubmitLock(async () => {
+      const generating = await db.countGeneratingExams(accountId);
+      if (generating >= MAX_GENERATING_PER_ACCOUNT) {
+        return { status: 429, msg: '已有 ' + generating + ' 份试卷正在生成，等生成完再试吧' };
+      }
+      const flipped = await db.resetExamGenerating(req.params.id);
+      if (!flipped) return { status: 409, msg: '状态已变化，请刷新列表再试' };
+      cfg.retryCount = retryCount + 1;
+      await db.updateExamConfig(req.params.id, JSON.stringify(cfg));
+      return null;
+    });
+    if (gate) return res.status(gate.status).json({ ok: false, msg: gate.msg });
     res.json({ ok: true, examId: req.params.id, status: 'generating' });
     const record = { id: row.id, accountId: row.account_id };
     runGeneration(record, effFromConfig(row))
@@ -711,3 +743,4 @@ module.exports.isRetryableAgnesError = isRetryableAgnesError;
 module.exports.runGeneration = runGeneration;
 module.exports.friendlyFailReason = friendlyFailReason;
 module.exports.MAX_GENERATING_PER_ACCOUNT = MAX_GENERATING_PER_ACCOUNT;
+module.exports.MAX_EXAM_RETRIES = MAX_EXAM_RETRIES;

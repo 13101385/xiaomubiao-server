@@ -49,7 +49,7 @@ function createTables() {
     'CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone)',
     'CREATE INDEX IF NOT EXISTS idx_sms_codes_phone ON sms_codes(phone)',
     'CREATE INDEX IF NOT EXISTS idx_sms_codes_expires ON sms_codes(expires_at)',
-    'CREATE INDEX IF NOT EXISTS idx_exams_account ON exams(account_id)',
+    'CREATE INDEX IF NOT EXISTS idx_exams_account ON exams(account_id)', 'CREATE INDEX IF NOT EXISTS idx_exams_code ON exams(code)',
     'CREATE INDEX IF NOT EXISTS idx_posters_account ON posters(account_id)',
     'CREATE INDEX IF NOT EXISTS idx_reminder_tasks_scan ON reminder_tasks(date, status, reminded_start)',
     'CREATE INDEX IF NOT EXISTS idx_reminder_tasks_account ON reminder_tasks(account_id, date)', 'CREATE INDEX IF NOT EXISTS idx_feedbacks_created ON feedbacks(created_at)', 'CREATE INDEX IF NOT EXISTS idx_feedbacks_account ON feedbacks(account_id, created_at)', 'CREATE INDEX IF NOT EXISTS idx_analytics_event_ts ON analytics_events(event, server_ts)', 'CREATE INDEX IF NOT EXISTS idx_analytics_account_ts ON analytics_events(account_id, server_ts)'
@@ -58,8 +58,8 @@ function createTables() {
   return new Promise((resolve, reject) => {
     db.serialize(() => {
       let count = 0;
-      // +7：七条幂等加列 ALTER TABLE（posters 两列 + parent_records 头像三列 + exams 状态两列）
-      const total = tables.length + indexes.length + 7;
+      // +8：八条幂等加列 ALTER TABLE（posters 两列 + parent_records 头像三列 + exams 状态两列 + exams 分享 code 一列）
+      const total = tables.length + indexes.length + 8;
       const done = () => {
         count++;
         if (count === total) {
@@ -114,6 +114,14 @@ function createTables() {
       db.run("ALTER TABLE exams ADD COLUMN fail_reason TEXT DEFAULT ''", (err) => {
         if (err) {
           console.warn('[DB] exams 加 fail_reason 列失败（列可能已存在，忽略）:', err.message);
+        }
+        done();
+      });
+      // 幂等加列：exams 分享 code（PM-28：分享链接只带 code 不带 accountId；存量试卷 code
+      // 为空，下发时由路由层懒回填，老试卷原 id 路径不受影响）；列已存在时忽略报错
+      db.run("ALTER TABLE exams ADD COLUMN code TEXT DEFAULT ''", (err) => {
+        if (err) {
+          console.warn('[DB] exams 加 code 列失败（列可能已存在，忽略）:', err.message);
         }
         done();
       });
@@ -339,8 +347,8 @@ function isParentRegistered(accountId) {
 function createExam(exam) {
   return new Promise((resolve, reject) => {
     db.run(
-      'INSERT INTO exams (id, account_id, open_id, subject, grade, title, config, content, status, fail_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [exam.id, exam.accountId, exam.openId || '', exam.subject, exam.grade, exam.title, exam.config, exam.content, exam.status || 'ready', exam.failReason || '', exam.createdAt],
+      'INSERT INTO exams (id, account_id, open_id, subject, grade, title, config, content, status, fail_reason, code, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [exam.id, exam.accountId, exam.openId || '', exam.subject, exam.grade, exam.title, exam.config, exam.content, exam.status || 'ready', exam.failReason || '', exam.code || '', exam.createdAt],
       (err) => {
         if (err) reject(err);
         else resolve(exam);
@@ -352,7 +360,7 @@ function createExam(exam) {
 function listExams(accountId) {
   return new Promise((resolve, reject) => {
     db.all(
-      'SELECT id, account_id, subject, grade, title, status, fail_reason, created_at FROM exams WHERE account_id = ? ORDER BY created_at DESC LIMIT 100',
+      'SELECT id, account_id, subject, grade, title, status, fail_reason, code, created_at FROM exams WHERE account_id = ? ORDER BY created_at DESC LIMIT 100',
       [accountId],
       (err, rows) => {
         if (err) reject(err);
@@ -454,6 +462,35 @@ function getExam(examId, accountId) {
       (err, row) => {
         if (err) reject(err);
         else resolve(row || null);
+      }
+    );
+  });
+}
+
+/** PM-28：按分享 code 查卷（不带账号条件——归属校验由路由层按请求方会话做，不是本人的卷返回 404） */
+function getExamByCode(code) {
+  return new Promise((resolve, reject) => {
+    if (!code) return resolve(null);
+    db.get(
+      'SELECT * FROM exams WHERE code = ?',
+      [String(code)],
+      (err, row) => {
+        if (err) reject(err);
+        else resolve(row || null);
+      }
+    );
+  });
+}
+
+/** PM-28：为存量试卷回填 code（仅当 code 为空时写入，防覆盖已有 code） */
+function setExamCode(examId, code) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      "UPDATE exams SET code = ? WHERE id = ? AND (code IS NULL OR code = '')",
+      [String(code || ''), examId],
+      function (err) {
+        if (err) reject(err);
+        else resolve(this.changes > 0);
       }
     );
   });
@@ -983,7 +1020,7 @@ module.exports = {
   getUserByOpenId, getUserByPhone, upsertUser, updateUserName,
   saveSmsCode, verifySmsCode,
   getParentRecord, saveParentRecord, upsertParentProfile, isParentRegistered,
-  createExam, listExams, getExam, deleteExam, countExamsToday,
+  createExam, listExams, getExam, getExamByCode, setExamCode, deleteExam, countExamsToday,
   updateExamReady, updateExamFailed, resetExamGenerating, countGeneratingExams, failStaleGeneratingExams, updateExamConfig,
   createPoster, listPosters, listLibraryPosters, listLibraryThemes, allPostersForAdmin, getPoster, deletePoster, updatePoster,
   putBlob, getBlob, createFeedback, countFeedbacksSince, listFeedbacks, insertAnalyticsEvents, runSql, getSql, allSql,

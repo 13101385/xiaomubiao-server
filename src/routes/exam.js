@@ -264,44 +264,30 @@ async function topUpExam(exam, effCounts, ctx, callJson) {
 
 /* ==================== 路由 ==================== */
 
+// PM-87：同一账号同时生成中的试卷上限（防连点/滥用烧上游额度）
+const MAX_GENERATING_PER_ACCOUNT = 3;
+
+/** PM-87：把内部错误转成家长可读的失败原因（落 failed 状态时展示，并给重试入口） */
+function friendlyFailReason(err) {
+  const msg = (err && err.message) || '生成失败';
+  if (msg.includes('未配置')) return '出题服务暂时不可用，请稍后再试';
+  if (msg.includes('429') || /rate limit/i.test(msg)) return '出题服务正忙，请稍后重试';
+  if (msg.includes('解析失败') || msg.includes('未返回内容') || msg.includes('缺少题目')) return '这次没生成成功，请重试';
+  if (msg.includes('无可用题目')) return '这次题目质量没过关，请重试';
+  return '生成失败：' + msg.slice(0, 80);
+}
+
 /**
- * POST /api/exam/generate
- * 生成试卷
- * body: { accountId, openId?, subject, grade, knowledge?, difficulty?, choice?, fill?, trueFalse?, shortAnswer?, calculation?, essay?, durationMin? }
+ * PM-87：异步生成主体（与请求连接脱钩，detached 执行）：
+ * 完成后回填题目转 ready；任何失败转 failed 并写明原因。内部重试沿用 callAgnes
+ * 的退避重试（1.5s/4s、最多 3 次尝试，INS-129 的服务端侧口径）。
+ * @param record 已落库的 generating 记录（含 id/accountId/config 等）
+ * @param eff 已净化的生效参数（counts/term/unitRange 已定版）
  */
-router.post('/generate', async (req, res) => {
-  const {
-    accountId, openId = '', subject, grade,
-    knowledge = '', difficulty = '中等',
-    choice = 0, fill = 0, trueFalse = 0, shortAnswer = 0, calculation = 0, essay = 0,
-    durationMin = 60, term = '', unitRange = '全部单元'
-  } = req.body || {};
-
-  // 参数校验
-  if (!accountId) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
-  if (!SUBJECTS.includes(subject)) return res.status(400).json({ ok: false, msg: '不支持的学科' });
-  if (!GRADES.includes(grade)) return res.status(400).json({ ok: false, msg: '不支持的年级' });
-  if (!DIFFICULTY.includes(difficulty)) return res.status(400).json({ ok: false, msg: '不支持的难度' });
-
-  // 学科净化：计算题仅限数学，非数学学科的 calculation 等量补位简答（题数总量不变）
-  const { counts, moved } = examQuality.sanitizeCountsForSubject(subject, { choice, fill, trueFalse, shortAnswer, calculation, essay });
-  const termVal = (term === '上册' || term === '下册') ? term : '';
-  // PM-51：单元范围白名单校验（非法值回落「全部单元」，不让脏参数进提示词）
-  const unitRangeVal = UNIT_RANGES.includes(unitRange) ? unitRange : '全部单元';
-  const totalQuestions = Object.values(counts).reduce((a, b) => a + (Number(b) || 0), 0);
-  if (totalQuestions < 1) return res.status(400).json({ ok: false, msg: '请至少选择一种题型' });
-  if (totalQuestions > 50) return res.status(400).json({ ok: false, msg: '题目数量过多（最多50题）' });
-
+async function runGeneration(record, eff) {
+  const { subject, grade, knowledge, difficulty, durationMin, counts, moved, termVal, unitRangeVal, totalQuestions } = eff;
   try {
-    // 每日限额
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    const todayCount = await db.countExamsToday(accountId, startOfDay.getTime());
-    if (todayCount >= DAILY_LIMIT) {
-      return res.status(429).json({ ok: false, msg: '今日生成已达上限（' + DAILY_LIMIT + ' 份），明天再来吧' });
-    }
-
-    const prompt = buildPrompt(Object.assign({}, req.body, counts, { term: termVal, unitRange: unitRangeVal }));
+    const prompt = buildPrompt({ subject, grade, knowledge, difficulty, durationMin, term: termVal, unitRange: unitRangeVal, ...counts });
     const exam = await callAgnes(prompt);
 
     // 校验返回结构
@@ -348,30 +334,123 @@ router.post('/generate', async (req, res) => {
       crossSubjectMoved: moved, term: termVal, unitRange: unitRangeVal
     };
 
+    await db.updateExamReady(record.id, exam.title || (grade + '·' + subject + '试卷'), JSON.stringify(exam));
+    console.log('[EXAM] 异步生成完成:', record.id, 'delivered', deliveredQuestions, '/', totalQuestions);
+  } catch (err) {
+    console.error('[EXAM] 异步生成失败:', record.id, err.message);
+    try { await db.updateExamFailed(record.id, friendlyFailReason(err)); } catch (e) { /* 落状态失败只记日志 */ }
+  }
+}
+
+/** 由已落库记录的 config 重建生效参数（失败重试与首次提交共用同一条生成管线） */
+function effFromConfig(row) {
+  let cfg = {};
+  try { cfg = JSON.parse(row.config || '{}'); } catch (e) {}
+  const counts = cfg.counts || { choice: 0, fill: 0, trueFalse: 0, shortAnswer: 0, calculation: 0, essay: 0 };
+  const totalQuestions = Object.values(counts).reduce((a, b) => a + (Number(b) || 0), 0);
+  return {
+    subject: row.subject, grade: row.grade,
+    knowledge: cfg.knowledge || '', difficulty: cfg.difficulty || '中等',
+    durationMin: cfg.durationMin || 60, counts, moved: 0,
+    termVal: cfg.term || '', unitRangeVal: cfg.unitRange || '全部单元', totalQuestions
+  };
+}
+
+/**
+ * POST /api/exam/generate
+ * 提交生成（PM-87 异步化）：落一条 generating 记录立即返回 examId，生成与连接脱钩——
+ * 客户端离开/断开不影响，完成后在「我的试卷」里转 ready，失败转 failed 并写明原因。
+ * body: { accountId, openId?, subject, grade, knowledge?, difficulty?, choice?, fill?, trueFalse?, shortAnswer?, calculation?, essay?, durationMin? }
+ */
+router.post('/generate', async (req, res) => {
+  const {
+    accountId, openId = '', subject, grade,
+    knowledge = '', difficulty = '中等',
+    choice = 0, fill = 0, trueFalse = 0, shortAnswer = 0, calculation = 0, essay = 0,
+    durationMin = 60, term = '', unitRange = '全部单元'
+  } = req.body || {};
+
+  // 参数校验
+  if (!accountId) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
+  if (!SUBJECTS.includes(subject)) return res.status(400).json({ ok: false, msg: '不支持的学科' });
+  if (!GRADES.includes(grade)) return res.status(400).json({ ok: false, msg: '不支持的年级' });
+  if (!DIFFICULTY.includes(difficulty)) return res.status(400).json({ ok: false, msg: '不支持的难度' });
+
+  // 学科净化：计算题仅限数学，非数学学科的 calculation 等量补位简答（题数总量不变）
+  const { counts, moved } = examQuality.sanitizeCountsForSubject(subject, { choice, fill, trueFalse, shortAnswer, calculation, essay });
+  const termVal = (term === '上册' || term === '下册') ? term : '';
+  // PM-51：单元范围白名单校验（非法值回落「全部单元」，不让脏参数进提示词）
+  const unitRangeVal = UNIT_RANGES.includes(unitRange) ? unitRange : '全部单元';
+  const totalQuestions = Object.values(counts).reduce((a, b) => a + (Number(b) || 0), 0);
+  if (totalQuestions < 1) return res.status(400).json({ ok: false, msg: '请至少选择一种题型' });
+  if (totalQuestions > 50) return res.status(400).json({ ok: false, msg: '题目数量过多（最多50题）' });
+
+  try {
+    // 每日限额（generating/failed 记录同样计入：它们同样消耗了上游调用，防费用失控口径不变）
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const todayCount = await db.countExamsToday(accountId, startOfDay.getTime());
+    if (todayCount >= DAILY_LIMIT) {
+      return res.status(429).json({ ok: false, msg: '今日生成已达上限（' + DAILY_LIMIT + ' 份），明天再来吧' });
+    }
+    // 并发上限：同账号同时生成中的份数
+    const generating = await db.countGeneratingExams(accountId);
+    if (generating >= MAX_GENERATING_PER_ACCOUNT) {
+      return res.status(429).json({ ok: false, msg: '已有 ' + generating + ' 份试卷正在生成，等生成完再试吧' });
+    }
+
     const record = {
       id: 'exam_' + crypto.randomBytes(8).toString('hex'),
       accountId,
       openId,
       subject,
       grade,
-      title: exam.title || (grade + '·' + subject + '试卷'),
+      title: grade + '·' + subject + '试卷',
       config: JSON.stringify({ subject, grade, knowledge, difficulty, durationMin, counts, term: termVal, unitRange: unitRangeVal }),
-      content: JSON.stringify(exam),
+      content: '',
+      status: 'generating',
+      failReason: '',
       createdAt: Date.now()
     };
     await db.createExam(record);
 
-    res.json({
-      ok: true, examId: record.id,
-      requested: totalQuestions, delivered: deliveredQuestions,
-      missing: Math.max(0, totalQuestions - deliveredQuestions)
-    });
+    // 立即返回，生成脱钩在后台跑（客户端断开不影响；进程重启遗留由启动清扫置 failed）
+    res.json({ ok: true, examId: record.id, status: 'generating' });
+    runGeneration(record, { subject, grade, knowledge, difficulty, durationMin, counts, moved, termVal, unitRangeVal, totalQuestions })
+      .catch(e => console.error('[EXAM] runGeneration 未捕获异常:', record.id, e && e.message));
   } catch (err) {
-    console.error('[EXAM] generate error:', err.message);
-    if (err.message && err.message.indexOf('AGNES') > -1) {
-      return res.status(500).json({ ok: false, msg: err.message });
+    console.error('[EXAM] generate submit error:', err.message);
+    res.status(500).json({ ok: false, msg: '提交生成失败：' + err.message });
+  }
+});
+
+/**
+ * POST /api/exam/:id/retry
+ * 失败重试：仅 failed 记录可重试，按落库 config 原参数重新异步生成。
+ * body/query: { accountId }
+ */
+router.post('/:id/retry', async (req, res) => {
+  const accountId = (req.body && req.body.accountId) || req.query.accountId;
+  if (!accountId) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
+  try {
+    const row = await db.getExam(req.params.id, accountId);
+    if (!row) return res.status(404).json({ ok: false, msg: '试卷不存在' });
+    if (row.status !== 'failed') {
+      return res.status(409).json({ ok: false, msg: row.status === 'generating' ? '这份试卷正在生成中' : '这份试卷已生成成功，不用重试' });
     }
-    res.status(500).json({ ok: false, msg: '试卷生成失败：' + err.message });
+    const generating = await db.countGeneratingExams(accountId);
+    if (generating >= MAX_GENERATING_PER_ACCOUNT) {
+      return res.status(429).json({ ok: false, msg: '已有 ' + generating + ' 份试卷正在生成，等生成完再试吧' });
+    }
+    const flipped = await db.resetExamGenerating(req.params.id);
+    if (!flipped) return res.status(409).json({ ok: false, msg: '状态已变化，请刷新列表再试' });
+    res.json({ ok: true, examId: req.params.id, status: 'generating' });
+    const record = { id: row.id, accountId: row.account_id };
+    runGeneration(record, effFromConfig(row))
+      .catch(e => console.error('[EXAM] runGeneration(retry) 未捕获异常:', row.id, e && e.message));
+  } catch (err) {
+    console.error('[EXAM] retry error:', err.message);
+    res.status(500).json({ ok: false, msg: '重试提交失败：' + err.message });
   }
 });
 
@@ -389,6 +468,9 @@ router.get('/list', async (req, res) => {
       subject: r.subject,
       grade: r.grade,
       title: r.title,
+      // PM-87：生成状态与失败原因（老数据无 status 列值时默认 ready）
+      status: r.status || 'ready',
+      failReason: r.fail_reason || '',
       createdAt: r.created_at
     }));
     res.json({ ok: true, data: { list } });
@@ -408,19 +490,28 @@ router.get('/:id', async (req, res) => {
   try {
     const row = await db.getExam(req.params.id, accountId);
     if (!row) return res.status(404).json({ ok: false, msg: '试卷不存在' });
+    // PM-87：generating/failed 明确返回状态（content 为空），前端据此渲染状态页而非空白/报错
+    const status = row.status || 'ready';
     let content = {};
-    try { content = JSON.parse(row.content); } catch (e) {}
-    res.json({
-      ok: true,
-      exam: {
-        id: row.id,
-        subject: row.subject,
-        grade: row.grade,
-        title: row.title,
-        createdAt: row.created_at,
-        content
-      }
-    });
+    if (status === 'ready' && row.content) {
+      try { content = JSON.parse(row.content); } catch (e) {}
+    }
+    const exam = {
+      id: row.id,
+      subject: row.subject,
+      grade: row.grade,
+      title: row.title,
+      status,
+      failReason: row.fail_reason || '',
+      createdAt: row.created_at,
+      content
+    };
+    if (status === 'ready' && content.delivery) {
+      exam.requested = content.delivery.requested;
+      exam.delivered = content.delivery.delivered;
+      exam.missing = content.delivery.missing;
+    }
+    res.json({ ok: true, exam });
   } catch (err) {
     console.error('[EXAM] get error:', err.message);
     res.status(500).json({ ok: false, msg: '获取试卷失败' });
@@ -459,6 +550,10 @@ router.get('/:id/html', async (req, res) => {
   try {
     const row = await db.getExam(req.params.id, accountId);
     if (!row) return res.status(404).json({ ok: false, msg: '试卷不存在' });
+    // PM-87：未 ready 的试卷不许导出（否则导出一张空卷）
+    if ((row.status || 'ready') !== 'ready') {
+      return res.status(409).json({ ok: false, msg: row.status === 'failed' ? ('试卷生成失败：' + (row.fail_reason || '请重试')) : '试卷正在生成中，请稍后再试' });
+    }
 
     let content = {};
     try { content = JSON.parse(row.content); } catch (e) {}
@@ -536,6 +631,10 @@ router.get('/:id/pdf', async (req, res) => {
   try {
     const row = await db.getExam(req.params.id, accountId);
     if (!row) return res.status(404).json({ ok: false, msg: '试卷不存在' });
+    // PM-87：未 ready 的试卷不许导出（否则导出一张空卷）
+    if ((row.status || 'ready') !== 'ready') {
+      return res.status(409).json({ ok: false, msg: row.status === 'failed' ? ('试卷生成失败：' + (row.fail_reason || '请重试')) : '试卷正在生成中，请稍后再试' });
+    }
 
     let content = {};
     try { content = JSON.parse(row.content); } catch (e) {}
@@ -609,3 +708,6 @@ module.exports = router;
 module.exports.buildPrompt = buildPrompt;
 module.exports.topUpExam = topUpExam;
 module.exports.isRetryableAgnesError = isRetryableAgnesError;
+module.exports.runGeneration = runGeneration;
+module.exports.friendlyFailReason = friendlyFailReason;
+module.exports.MAX_GENERATING_PER_ACCOUNT = MAX_GENERATING_PER_ACCOUNT;

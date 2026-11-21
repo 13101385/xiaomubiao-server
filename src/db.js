@@ -404,6 +404,20 @@ function resetExamGenerating(examId) {
   });
 }
 
+/** QA 5 轮第 1 轮：回写试卷 config（失败重试次数计数落在 config.retryCount，防无限重试绕过每日限额烧上游） */
+function updateExamConfig(examId, config) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      'UPDATE exams SET config = ? WHERE id = ?',
+      [String(config || '{}'), examId],
+      function (err) {
+        if (err) reject(err);
+        else resolve(this.changes > 0);
+      }
+    );
+  });
+}
+
 /** PM-87：同账号当前生成中的试卷数（并发上限防滥用） */
 function countGeneratingExams(accountId) {
   return new Promise((resolve, reject) => {
@@ -970,7 +984,7 @@ module.exports = {
   saveSmsCode, verifySmsCode,
   getParentRecord, saveParentRecord, upsertParentProfile, isParentRegistered,
   createExam, listExams, getExam, deleteExam, countExamsToday,
-  updateExamReady, updateExamFailed, resetExamGenerating, countGeneratingExams, failStaleGeneratingExams,
+  updateExamReady, updateExamFailed, resetExamGenerating, countGeneratingExams, failStaleGeneratingExams, updateExamConfig,
   createPoster, listPosters, listLibraryPosters, listLibraryThemes, allPostersForAdmin, getPoster, deletePoster, updatePoster,
   putBlob, getBlob, createFeedback, countFeedbacksSince, listFeedbacks, insertAnalyticsEvents, runSql, getSql, allSql,
   deleteAccountData,

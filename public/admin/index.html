@@ -502,7 +502,37 @@
         '<div class="sys-card"><h3>服务状态</h3><div>状态：' + esc(d.status) + '</div><div>版本：' + esc(d.version || '-') + '</div>' +
         '<div>Node：' + esc(d.node) + '</div><div>已运行：' + Math.floor(d.uptimeSec / 60) + ' 分钟</div><div>服务器时间：' + esc(d.timestamp) + '</div></div>' +
         '<div class="sys-card"><h3>配置状态（只显示是否配置，不显示内容）</h3>' + cfg + '</div>' +
-        '<div class="sys-card"><h3>最近操作记录</h3>' + audit + '</div>';
+        '<div class="sys-card"><h3>最近操作记录</h3>' + audit + '</div>' +
+        '<div class="sys-card"><h3>数据库空间</h3><div id="dbStats">加载中…</div>' +
+        '<div style="margin-top:8px"><button id="dbCleanupBtn">清理无用图片数据</button></div>' +
+        '<div id="dbCleanupResult" style="margin-top:6px"></div></div>';
+      loadDbStats();
+      var cb = $('dbCleanupBtn');
+      if (cb) cb.addEventListener('click', doDbCleanup);
+    });
+  }
+
+  function fmtMB(n) { return (n / 1048576).toFixed(1) + ' MB'; }
+  function loadDbStats() {
+    api('/api/admin/db-stats').then(function (r) {
+      var el = $('dbStats');
+      if (!el) return;
+      if (!r.ok) { el.textContent = '统计失败'; return; }
+      var d = r.data;
+      el.innerHTML = '<div>数据库文件：' + fmtMB(d.dbBytes) + '（其中空闲页 ' + fmtMB(d.freelistBytes) + '）</div>' +
+        '<div>海报记录：' + esc(d.posters) + ' 条；图片数据：' + esc(d.blobs) + ' 份 / ' + fmtMB(d.blobBytes) + '</div>' +
+        '<div>无用图片（记录已删、图片残留）：' + esc(d.orphanCount) + ' 份 / ' + fmtMB(d.orphanBytes) + '</div>';
+    });
+  }
+  function doDbCleanup() {
+    if (!window.confirm('确定清理无用图片数据？只删记录已不存在的残留图片，不影响在用海报。')) return;
+    var out = $('dbCleanupResult');
+    out.textContent = '清理中…（大文件可能需要一会儿）';
+    api('/api/admin/db-cleanup', { method: 'POST' }).then(function (r) {
+      if (!r.ok) { out.textContent = '清理失败：' + (r.msg || ''); return; }
+      var d = r.data;
+      out.textContent = '已清理 ' + d.deleted + ' 份无用图片；数据库 ' + fmtMB(d.before.dbBytes) + ' → ' + fmtMB(d.after.dbBytes) + '（压缩：' + esc(d.vacuum) + '）';
+      loadDbStats();
     });
   }
 

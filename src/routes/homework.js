@@ -300,11 +300,12 @@ function normalizeRecognizedItems(parsed) {
   const items = [];
   raw.slice(0, MAX_ITEMS).forEach((it) => {
     if (!it || typeof it !== 'object') return;
-    items.push({
-      no: items.length + 1,
-      stem: clampText(it.stem != null ? it.stem : (it.question != null ? it.question : it.title), 300),
-      studentAnswer: clampText(it.studentAnswer != null ? it.studentAnswer : (it.answer != null ? it.answer : it.student_answer), 200)
-    });
+    const stem = clampText(it.stem != null ? it.stem : (it.question != null ? it.question : it.title), 300);
+    const studentAnswer = clampText(it.studentAnswer != null ? it.studentAnswer : (it.answer != null ? it.answer : it.student_answer), 200);
+    // QA 5 轮 R2：题干与作答双空的是无效行（模型回了空壳对象）——剔除，全空则走下方
+    // 「没有识别出题目」的失败口径，不把空行当识别成功下发给判题页。
+    if (!stem && !studentAnswer) return;
+    items.push({ no: items.length + 1, stem, studentAnswer });
   });
   if (!items.length) {
     const err = new Error('AI 没有识别出题目');
@@ -464,13 +465,13 @@ router.post('/grade-photo', async (req, res) => {
   const subject = SUBJECTS.includes(body.subject) ? body.subject : '';
 
   const rateKey = accountId || ('ip:' + (req.ip || 'unknown'));
-  if (!rateAllowed(rateKey)) {
-    return res.status(429).json({ ok: false, code: 'RATE_LIMITED', msg: '拍照批改太频繁了，请稍后再试' });
-  }
-
   try {
     sweepTmp();
     const { buf, ext } = decodeImage(body.imageBase64);
+    // QA 5 轮 R2（同 recognize-photo 口径）：限流计数在图片校验之后，坏图不烧额度。
+    if (!rateAllowed(rateKey)) {
+      return res.status(429).json({ ok: false, code: 'RATE_LIMITED', msg: '拍照批改太频繁了，请稍后再试' });
+    }
     let items = null;
     let usedProvider = '';
     if (visionProvider() === 'ark') {
@@ -526,13 +527,14 @@ router.post('/recognize-photo', async (req, res) => {
   const subject = SUBJECTS.includes(body.subject) ? body.subject : '';
 
   const rateKey = accountId || ('ip:' + (req.ip || 'unknown'));
-  if (!rateAllowed(rateKey)) {
-    return res.status(429).json({ ok: false, code: 'RATE_LIMITED', msg: '拍照识别太频繁了，请稍后再试' });
-  }
-
   try {
     sweepTmp();
     const { buf, ext } = decodeImage(body.imageBase64);
+    // QA 5 轮 R2：限流计数挪到图片校验之后——格式不对/过大的坏图直接 400，
+    // 不烧家长的视觉调用额度（此前坏图连传 20 张即可把正常识别堵到 429）。
+    if (!rateAllowed(rateKey)) {
+      return res.status(429).json({ ok: false, code: 'RATE_LIMITED', msg: '拍照识别太频繁了，请稍后再试' });
+    }
     let items = null;
     let usedProvider = '';
     if (visionProvider() === 'ark') {

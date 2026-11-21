@@ -115,6 +115,15 @@ async function start() {
   try {
     await db.init();
 
+    // PM-87：异步生成与进程脱钩后，上个进程中断遗留的 generating 记录不会自己完成，
+    // 启动时统一置 failed 并写明原因，家长可在「我的试卷」里一键重试
+    try {
+      const stale = await db.failStaleGeneratingExams('服务重启，生成中断了，请点重试');
+      if (stale > 0) console.log('[EXAM] 启动清扫：' + stale + ' 份中断的生成中试卷已置为失败待重试');
+    } catch (e) {
+      console.warn('[EXAM] 启动清扫失败（不影响启动）:', e.message);
+    }
+
     startReminderScheduler();
 
     // 微信官方数据（流量主口径）：启动后延迟同步一次，之后每日 08:30 由调度 tick 触发；

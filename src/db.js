@@ -489,8 +489,17 @@ function deletePoster(posterId, accountId) {
       'DELETE FROM posters WHERE id = ? AND account_id = ?',
       [posterId, accountId],
       function (err) {
-        if (err) reject(err);
-        else resolve(this.changes > 0);
+        if (err) return reject(err);
+        if (this.changes <= 0) return resolve(false);
+        // 同步删成品图 blob，防孤儿图堆积把磁盘写满（2026-11-21 教训：只删行不删图，残留 899 份/327MB）
+        db.run(
+          'DELETE FROM poster_blobs WHERE key IN (?, ?)',
+          ['composed/' + posterId + '.jpg', 'composed/' + posterId + '.png'],
+          (e2) => {
+            if (e2) console.error('[DB] deletePoster blob cleanup failed:', e2.message);
+            resolve(true);
+          }
+        );
       }
     );
   });

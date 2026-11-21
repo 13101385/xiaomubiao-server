@@ -539,7 +539,7 @@
     api('/api/admin/db-cleanup', { method: 'POST' }).then(function (r) {
       if (!r.ok) { out.textContent = '清理失败：' + (r.msg || ''); return; }
       var d = r.data;
-      out.textContent = '已清理 ' + d.deleted + ' 份无用图片；数据库 ' + fmtMB(d.before.dbBytes) + ' → ' + fmtMB(d.after.dbBytes) + '（压缩：' + esc(d.vacuum) + '）';
+      out.textContent = '已清理 ' + d.deleted + ' 份无用图片；现在可复用空间 ' + fmtMB(d.after.freelistBytes) + '，新图片可直接写入（数据库文件本体暂不缩小）';
       loadDbStats();
     });
   }

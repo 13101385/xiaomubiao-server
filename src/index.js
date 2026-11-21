@@ -99,6 +99,10 @@ app.use('/admin', express.static(path.join(__dirname, '..', 'public', 'admin')))
 app.use('/story-audio', express.static(path.join(__dirname, '..', 'story-audio'), { maxAge: '7d', immutable: true }));
 // 首页欢迎宣传位图片静态托管：public/welcome/<文件名>（文件名带版本号，换图升名；不设 immutable 以便同名订正）
 app.use('/welcome', express.static(path.join(__dirname, '..', 'public', 'welcome'), { maxAge: '1d' }));
+// 英语打卡（PM-91）音频与配图静态托管：word-audio/<包>-<序号>.mp3（单词发音）、
+// word-audio/<包>-<序号>-ex.mp3（例句发音）、word-audio/img/<包>-<序号>.png（词卡配图）；
+// 发音为 AI 合成语音；文件名即词卡键、内容长期不变，故 immutable 长缓存
+app.use('/word-audio', express.static(path.join(__dirname, '..', 'word-audio'), { maxAge: '7d', immutable: true }));
 
 // 错误处理
 app.use((err, req, res, next) => {

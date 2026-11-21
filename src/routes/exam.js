@@ -370,6 +370,40 @@ function effFromConfig(row) {
   };
 }
 
+/** PM-28：试卷分享 code——与 exam id 独立的随机标识，分享链接只带它、绝不带 accountId */
+function genExamCode() {
+  return 'xc_' + crypto.randomBytes(8).toString('hex');
+}
+
+/** PM-28：存量试卷 code 懒回填——下发前 code 为空则生成并落库（老卷原 id 路径不受影响） */
+async function ensureExamCode(row) {
+  if (row && !row.code) {
+    const code = genExamCode();
+    try {
+      await db.setExamCode(row.id, code);
+      row.code = code;
+    } catch (e) {
+      console.warn('[EXAM] code 回填失败（不阻塞下发）:', row.id, e.message);
+    }
+  }
+  return row;
+}
+
+/** PM-28：文件导出（html/pdf）的双口径鉴权——accountId 本人校验优先；
+ * 否则 code 与试卷对上即放行（前端 examFileUrl 带 code 时不带 accountId） */
+async function resolveExamForFile(req) {
+  const { accountId, code = '' } = req.query;
+  if (accountId) {
+    const own = await db.getExam(req.params.id, accountId);
+    if (own) return own;
+  }
+  if (code) {
+    const byCode = await db.getExamByCode(code);
+    if (byCode && byCode.id === req.params.id) return byCode;
+  }
+  return null;
+}
+
 /**
  * POST /api/exam/generate
  * 提交生成（PM-87 异步化）：落一条 generating 记录立即返回 examId，生成与连接脱钩——
@@ -411,6 +445,7 @@ router.post('/generate', async (req, res) => {
       content: '',
       status: 'generating',
       failReason: '',
+      code: genExamCode(),
       createdAt: Date.now()
     };
     // 限额/并发检查与落库在串行临界区内完成（QA 5 轮第 1 轮：防齐发 TOCTOU 突破上限）
@@ -433,7 +468,7 @@ router.post('/generate', async (req, res) => {
     if (gate) return res.status(429).json({ ok: false, msg: gate.msg });
 
     // 立即返回，生成脱钩在后台跑（客户端断开不影响；进程重启遗留由启动清扫置 failed）
-    res.json({ ok: true, examId: record.id, status: 'generating' });
+    res.json({ ok: true, examId: record.id, code: record.code, status: 'generating' });
     runGeneration(record, { subject, grade, knowledge, difficulty, durationMin, counts, moved, termVal, unitRangeVal, totalQuestions })
       .catch(e => console.error('[EXAM] runGeneration 未捕获异常:', record.id, e && e.message));
   } catch (err) {
@@ -495,6 +530,8 @@ router.get('/list', async (req, res) => {
   if (!accountId) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
   try {
     const rows = await db.listExams(accountId);
+    // PM-28：存量试卷在下发前懒回填 code，列表项带 code 供前端拼分享链接
+    for (const r of rows) await ensureExamCode(r);
     const list = rows.map(r => ({
       id: r.id,
       subject: r.subject,
@@ -503,6 +540,8 @@ router.get('/list', async (req, res) => {
       // PM-87：生成状态与失败原因（老数据无 status 列值时默认 ready）
       status: r.status || 'ready',
       failReason: r.fail_reason || '',
+      // PM-28：分享 code（前端 examCode 优先取它拼分享路径，不带 accountId）
+      code: r.code || '',
       createdAt: r.created_at
     }));
     res.json({ ok: true, data: { list } });
@@ -520,8 +559,15 @@ router.get('/:id', async (req, res) => {
   const { accountId } = req.query;
   if (!accountId) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
   try {
-    const row = await db.getExam(req.params.id, accountId);
+    let row = await db.getExam(req.params.id, accountId);
+    if (!row) {
+      // PM-28：分享链接带 code 打开时前端把 code 放在 :id 位——按 code 查到卷后
+      // 仍须校验归属（code 只是标识不是通行证），不是本人的卷一律 404
+      const byCode = await db.getExamByCode(req.params.id);
+      if (byCode && byCode.account_id === accountId) row = byCode;
+    }
     if (!row) return res.status(404).json({ ok: false, msg: '试卷不存在' });
+    await ensureExamCode(row);
     // PM-87：generating/failed 明确返回状态（content 为空），前端据此渲染状态页而非空白/报错
     const status = row.status || 'ready';
     let content = {};
@@ -535,6 +581,8 @@ router.get('/:id', async (req, res) => {
       title: row.title,
       status,
       failReason: row.fail_reason || '',
+      // PM-28：分享 code（前端 examCode 优先取它）
+      code: row.code || '',
       createdAt: row.created_at,
       content
     };
@@ -576,11 +624,12 @@ router.delete('/:id', async (req, res) => {
  * 生成试卷 HTML（供前端渲染）
  */
 router.get('/:id/html', async (req, res) => {
-  const { accountId, showAnswer = '0' } = req.query;
-  if (!accountId) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
+  const { accountId, code = '', showAnswer = '0' } = req.query;
+  // PM-28：accountId 与 code 至少带一个（前端 examFileUrl 带 code 时不带 accountId）
+  if (!accountId && !code) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
 
   try {
-    const row = await db.getExam(req.params.id, accountId);
+    const row = await resolveExamForFile(req);
     if (!row) return res.status(404).json({ ok: false, msg: '试卷不存在' });
     // PM-87：未 ready 的试卷不许导出（否则导出一张空卷）
     if ((row.status || 'ready') !== 'ready') {
@@ -657,11 +706,12 @@ router.get('/:id/html', async (req, res) => {
 const CHINESE_FONT = path.join(__dirname, '..', 'fonts', 'SourceHanSansSC-Regular.otf');
 
 router.get('/:id/pdf', async (req, res) => {
-  const { accountId, showAnswer = '0' } = req.query;
-  if (!accountId) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
+  const { accountId, code = '', showAnswer = '0' } = req.query;
+  // PM-28：accountId 与 code 至少带一个（前端 examFileUrl 带 code 时不带 accountId）
+  if (!accountId && !code) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
 
   try {
-    const row = await db.getExam(req.params.id, accountId);
+    const row = await resolveExamForFile(req);
     if (!row) return res.status(404).json({ ok: false, msg: '试卷不存在' });
     // PM-87：未 ready 的试卷不许导出（否则导出一张空卷）
     if ((row.status || 'ready') !== 'ready') {
@@ -744,3 +794,4 @@ module.exports.runGeneration = runGeneration;
 module.exports.friendlyFailReason = friendlyFailReason;
 module.exports.MAX_GENERATING_PER_ACCOUNT = MAX_GENERATING_PER_ACCOUNT;
 module.exports.MAX_EXAM_RETRIES = MAX_EXAM_RETRIES;
+module.exports.genExamCode = genExamCode;

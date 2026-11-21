@@ -373,12 +373,23 @@ const pdf = await httpJson('GET', `http://127.0.0.1:${APP_PORT}/api/poster/${pid
 assert(pdf.status === 200 && pdf.buf.slice(0, 4).toString() === '%PDF' && pdf.buf.length > 200000,
 'PDF 导出成功且嵌入合成成品图（' + pdf.buf.length + 'B）');
 
-/* ---- 试卷生成全链路 ---- */
+/* ---- 试卷生成全链路（PM-87 异步语义：提交即返回，轮询详情等 ready） ---- */
+async function waitExamReady(examId, accountId, timeoutMs = 60000) {
+const t0 = Date.now();
+while (Date.now() - t0 < timeoutMs) {
+const r = await httpJson('GET', `http://127.0.0.1:${APP_PORT}/api/exam/${examId}?accountId=${accountId}`);
+if (r.json && r.json.exam && r.json.exam.status === 'ready') return r;
+if (r.json && r.json.exam && r.json.exam.status === 'failed') return r;
+await sleep(400);
+}
+return null;
+}
 const egen = await httpJson('POST', `http://127.0.0.1:${APP_PORT}/api/exam/generate`, {
 accountId: 'selftest', subject: '数学', grade: '小学三年级', difficulty: '中等', choice: 3, fill: 1
 });
-assert(egen.json && egen.json.ok, 'exam/generate 返回成功');
-const ed = await httpJson('GET', `http://127.0.0.1:${APP_PORT}/api/exam/${egen.json.examId}?accountId=selftest`);
+assert(egen.json && egen.json.ok && egen.json.status === 'generating', 'exam/generate 提交即返回 generating（PM-87 异步）');
+const ed = await waitExamReady(egen.json.examId, 'selftest');
+assert(!!ed, '异步生成最终 ready');
 const content = ed.json && ed.json.exam && ed.json.exam.content;
 const allQ = content? content.sections.flatMap(s => s.questions): [];
 assert(allQ.length === 4, '试卷题量保持 4 道（实际 ' + allQ.length + '）');
@@ -395,15 +406,18 @@ console.log(' 质量报告:', JSON.stringify(content.quality));
 const rgen = await httpJson('POST', `http://127.0.0.1:${APP_PORT}/api/exam/generate`, {
 accountId: 'selftest-retry', subject: '数学', grade: '小学三年级', difficulty: '中等', knowledge: '__RETRY__', choice: 3, fill: 1
 });
-assert(rgen.json && rgen.json.ok, '上游 429 两次后生成仍成功（后端退避重试生效）');
+assert(rgen.json && rgen.json.ok, '上游 429 场景提交成功');
+const rd = await waitExamReady(rgen.json.examId, 'selftest-retry');
+assert(!!rd && rd.json.exam.status === 'ready', '上游 429 两次后异步生成仍成功（后端退避重试生效）');
 assert(retryHits === 3, `主生成调用共尝试 3 次（实际 ${retryHits}）`);
 // #5 顽固坏题被丢弃后自动补题到请求数量
 const dgen = await httpJson('POST', `http://127.0.0.1:${APP_PORT}/api/exam/generate`, {
 accountId: 'selftest-drop', subject: '数学', grade: '小学三年级', difficulty: '中等', knowledge: '__DROP__', choice: 2, fill: 1
 });
-assert(dgen.json && dgen.json.ok && dgen.json.requested === 3 && dgen.json.delivered === 3 && dgen.json.missing === 0,
-`丢题后补齐到请求数量（requested ${dgen.json && dgen.json.requested} / delivered ${dgen.json && dgen.json.delivered} / missing ${dgen.json && dgen.json.missing}）`);
-const dd = await httpJson('GET', `http://127.0.0.1:${APP_PORT}/api/exam/${dgen.json.examId}?accountId=selftest-drop`);
+assert(dgen.json && dgen.json.ok, '丢题场景提交成功');
+const dd = await waitExamReady(dgen.json.examId, 'selftest-drop');
+assert(!!dd && dd.json.exam.requested === 3 && dd.json.exam.delivered === 3 && dd.json.exam.missing === 0,
+`丢题后补齐到请求数量（requested ${dd && dd.json.exam.requested} / delivered ${dd && dd.json.exam.delivered} / missing ${dd && dd.json.exam.missing}）`);
 const dcontent = dd.json && dd.json.exam && dd.json.exam.content;
 const dallQ = dcontent? dcontent.sections.flatMap(s => s.questions): [];
 assert(!dallQ.some(q => q.q.includes('7×8')) && dallQ.some(q => q.q.includes('2×9')), '顽固坏题 7×8 已丢弃、补题 2×9 已并入');
@@ -412,8 +426,9 @@ assert(dcontent.quality && dcontent.quality.toppedUp === 1, '质量报告记录�
 const cgen = await httpJson('POST', `http://127.0.0.1:${APP_PORT}/api/exam/generate`, {
 accountId: 'selftest-cn', subject: '语文', grade: '小学三年级', difficulty: '中等', choice: 2, calculation: 3
 });
-assert(cgen.json && cgen.json.ok && cgen.json.requested === 5, '语文卷带 calculation 请求：requested 按补位后总量 5 计');
-const cd = await httpJson('GET', `http://127.0.0.1:${APP_PORT}/api/exam/${cgen.json.examId}?accountId=selftest-cn`);
+assert(cgen.json && cgen.json.ok, '语文卷带 calculation 请求提交成功');
+const cd = await waitExamReady(cgen.json.examId, 'selftest-cn');
+assert(!!cd && cd.json.exam.requested === 5, '语文卷带 calculation 请求：requested 按补位后总量 5 计');
 const ccontent = cd.json && cd.json.exam && cd.json.exam.content;
 assert(ccontent &&!ccontent.sections.some(s => s.type === 'calculation'), '交付卷无计算题板块（已被剔除补位）');
 assert(ccontent.delivery && ccontent.delivery.crossSubjectMoved === 3, 'delivery 记录跨学科补位 3 题');

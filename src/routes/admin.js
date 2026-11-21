@@ -661,6 +661,7 @@ router.get('/db-stats', async (req, res) => {
 });
 
 router.post('/db-cleanup', async (req, res) => {
+  let journalInMemory = false;
   try {
     const before = await blobStats();
     const keys = await db.allSql('SELECT key FROM poster_blobs');
@@ -670,23 +671,32 @@ router.post('/db-cleanup', async (req, res) => {
       return m && !ids.has(m[1]);
     });
     let deleted = 0;
-    for (let i = 0; i < orphans.length; i += 50) {
-      const batch = orphans.slice(i, i + 50);
-      const ph = batch.map(() => '?').join(',');
-      await db.runSql('DELETE FROM poster_blobs WHERE key IN (' + ph + ')', batch);
-      deleted += batch.length;
+    if (orphans.length) {
+      // 磁盘写满时连回滚日志都写不下、DELETE 同样报 SQLITE_FULL（2026-11-21 首轮清理实测）：
+      // 临时把回滚日志放内存（单条 DELETE 毫秒级，风险窗口极小），删完立即恢复磁盘日志。
+      await db.getSql('PRAGMA journal_mode=MEMORY');
+      journalInMemory = true;
+      try {
+        for (let i = 0; i < orphans.length; i += 20) {
+          const batch = orphans.slice(i, i + 20);
+          const ph = batch.map(() => '?').join(',');
+          await db.runSql('DELETE FROM poster_blobs WHERE key IN (' + ph + ')', batch);
+          deleted += batch.length;
+        }
+      } finally {
+        try { await db.getSql('PRAGMA journal_mode=DELETE'); } catch (e) { /* 恢复失败不阻塞结果 */ }
+        journalInMemory = false;
+      }
     }
-    let vacuum = 'skipped';
-    if (deleted > 0) {
-      try { await db.runSql('VACUUM'); vacuum = 'done'; }
-      catch (e) { vacuum = 'failed: ' + e.message; }
-    }
+    // 不做 VACUUM：磁盘满时 VACUUM 要另写一整份新文件、必然失败；
+    // 删除腾出的空闲页可被后续写入直接复用，功能上空间已经释放（文件本体待有余量时再缩）。
     const after = await blobStats();
-    await audit('db_cleanup', 'poster_blobs', 'deleted=' + deleted + ' vacuum=' + vacuum, req);
-    res.json({ ok: true, data: { deleted, vacuum, before, after } });
+    await audit('db_cleanup', 'poster_blobs', 'deleted=' + deleted, req);
+    res.json({ ok: true, data: { deleted, vacuum: 'skipped', before, after } });
   } catch (err) {
+    if (journalInMemory) { try { await db.getSql('PRAGMA journal_mode=DELETE'); } catch (e) { /* ignore */ } }
     console.error('[ADMIN] db-cleanup error:', err.message);
-    res.status(500).json({ ok: false, msg: '清理失败' });
+    res.status(500).json({ ok: false, msg: '清理失败：' + err.message });
   }
 });
 

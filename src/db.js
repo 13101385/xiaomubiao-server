@@ -29,7 +29,7 @@ function createTables() {
     'CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, open_id TEXT UNIQUE, phone TEXT UNIQUE, login_type TEXT NOT NULL, name TEXT DEFAULT \'\', pin_hash TEXT DEFAULT \'\', created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS parent_records (account_id TEXT PRIMARY KEY, parent_name TEXT NOT NULL, pin_hash TEXT NOT NULL, has_registered INTEGER DEFAULT 0, avatar_key TEXT DEFAULT \'\', avatar_type TEXT DEFAULT \'\', avatar_updated_at INTEGER DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS sms_codes (phone TEXT NOT NULL, code TEXT NOT NULL, expires_at INTEGER NOT NULL, used INTEGER DEFAULT 0, created_at INTEGER NOT NULL)',
-    'CREATE TABLE IF NOT EXISTS exams (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, open_id TEXT DEFAULT \'\', subject TEXT NOT NULL, grade TEXT NOT NULL, title TEXT NOT NULL, config TEXT NOT NULL, content TEXT NOT NULL, created_at INTEGER NOT NULL)',
+    'CREATE TABLE IF NOT EXISTS exams (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, open_id TEXT DEFAULT \'\', subject TEXT NOT NULL, grade TEXT NOT NULL, title TEXT NOT NULL, config TEXT NOT NULL, content TEXT NOT NULL, status TEXT NOT NULL DEFAULT \'ready\', fail_reason TEXT DEFAULT \'\', created_at INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS posters (id TEXT PRIMARY KEY, account_id TEXT NOT NULL, open_id TEXT DEFAULT \'\', theme TEXT NOT NULL, grade TEXT NOT NULL, title TEXT NOT NULL, source TEXT NOT NULL, config TEXT NOT NULL, content TEXT NOT NULL, image_url TEXT DEFAULT \'\', composed_url TEXT DEFAULT \'\', created_at INTEGER NOT NULL)',
     'CREATE TABLE IF NOT EXISTS poster_blobs (key TEXT PRIMARY KEY, data TEXT NOT NULL, created_at INTEGER NOT NULL)',
     // 订阅消息提醒：额度表（每账号每模板一行，quota 为微信一次性订阅的剩余可发送条数）
@@ -58,8 +58,8 @@ function createTables() {
   return new Promise((resolve, reject) => {
     db.serialize(() => {
       let count = 0;
-      // +5：五条幂等加列 ALTER TABLE（posters 两列 + parent_records 头像三列）
-      const total = tables.length + indexes.length + 5;
+      // +7：七条幂等加列 ALTER TABLE（posters 两列 + parent_records 头像三列 + exams 状态两列）
+      const total = tables.length + indexes.length + 7;
       const done = () => {
         count++;
         if (count === total) {
@@ -100,6 +100,20 @@ function createTables() {
       db.run("ALTER TABLE parent_records ADD COLUMN avatar_updated_at INTEGER DEFAULT 0", (err) => {
         if (err) {
           console.warn('[DB] parent_records 加 avatar_updated_at 列失败（列可能已存在，忽略）:', err.message);
+        }
+        done();
+      });
+      // 幂等加列：exams 生成状态（PM-87 服务端异步生成：generating/ready/failed；老库已有试卷
+      // 都是同步生成完才落库的，默认 'ready' 与事实一致）；列已存在时忽略报错
+      db.run("ALTER TABLE exams ADD COLUMN status TEXT NOT NULL DEFAULT 'ready'", (err) => {
+        if (err) {
+          console.warn('[DB] exams 加 status 列失败（列可能已存在，忽略）:', err.message);
+        }
+        done();
+      });
+      db.run("ALTER TABLE exams ADD COLUMN fail_reason TEXT DEFAULT ''", (err) => {
+        if (err) {
+          console.warn('[DB] exams 加 fail_reason 列失败（列可能已存在，忽略）:', err.message);
         }
         done();
       });
@@ -325,8 +339,8 @@ function isParentRegistered(accountId) {
 function createExam(exam) {
   return new Promise((resolve, reject) => {
     db.run(
-      'INSERT INTO exams (id, account_id, open_id, subject, grade, title, config, content, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [exam.id, exam.accountId, exam.openId || '', exam.subject, exam.grade, exam.title, exam.config, exam.content, exam.createdAt],
+      'INSERT INTO exams (id, account_id, open_id, subject, grade, title, config, content, status, fail_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [exam.id, exam.accountId, exam.openId || '', exam.subject, exam.grade, exam.title, exam.config, exam.content, exam.status || 'ready', exam.failReason || '', exam.createdAt],
       (err) => {
         if (err) reject(err);
         else resolve(exam);
@@ -338,11 +352,81 @@ function createExam(exam) {
 function listExams(accountId) {
   return new Promise((resolve, reject) => {
     db.all(
-      'SELECT id, account_id, subject, grade, title, created_at FROM exams WHERE account_id = ? ORDER BY created_at DESC LIMIT 100',
+      'SELECT id, account_id, subject, grade, title, status, fail_reason, created_at FROM exams WHERE account_id = ? ORDER BY created_at DESC LIMIT 100',
       [accountId],
       (err, rows) => {
         if (err) reject(err);
         else resolve(rows || []);
+      }
+    );
+  });
+}
+
+/** PM-87：异步生成完成——回填标题与题目内容，状态转 ready 并清失败原因 */
+function updateExamReady(examId, title, content) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      "UPDATE exams SET title = ?, content = ?, status = 'ready', fail_reason = '' WHERE id = ?",
+      [title, content, examId],
+      function (err) {
+        if (err) reject(err);
+        else resolve(this.changes > 0);
+      }
+    );
+  });
+}
+
+/** PM-87：异步生成失败——状态转 failed 并记录家长可读的失败原因 */
+function updateExamFailed(examId, reason) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      "UPDATE exams SET status = 'failed', fail_reason = ? WHERE id = ?",
+      [String(reason || '生成失败').slice(0, 200), examId],
+      function (err) {
+        if (err) reject(err);
+        else resolve(this.changes > 0);
+      }
+    );
+  });
+}
+
+/** PM-87：失败重试——状态转回 generating 并清失败原因 */
+function resetExamGenerating(examId) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      "UPDATE exams SET status = 'generating', fail_reason = '' WHERE id = ? AND status = 'failed'",
+      [examId],
+      function (err) {
+        if (err) reject(err);
+        else resolve(this.changes > 0);
+      }
+    );
+  });
+}
+
+/** PM-87：同账号当前生成中的试卷数（并发上限防滥用） */
+function countGeneratingExams(accountId) {
+  return new Promise((resolve, reject) => {
+    db.get(
+      "SELECT COUNT(*) AS n FROM exams WHERE account_id = ? AND status = 'generating'",
+      [accountId],
+      (err, row) => {
+        if (err) reject(err);
+        else resolve(row ? row.n : 0);
+      }
+    );
+  });
+}
+
+/** PM-87：服务启动清扫——上个进程中断遗留的 generating 全部置 failed（原因明示可重试） */
+function failStaleGeneratingExams(reason) {
+  return new Promise((resolve, reject) => {
+    db.run(
+      "UPDATE exams SET status = 'failed', fail_reason = ? WHERE status = 'generating'",
+      [String(reason || '生成中断，请重试').slice(0, 200)],
+      function (err) {
+        if (err) reject(err);
+        else resolve(this.changes || 0);
       }
     );
   });
@@ -886,6 +970,7 @@ module.exports = {
   saveSmsCode, verifySmsCode,
   getParentRecord, saveParentRecord, upsertParentProfile, isParentRegistered,
   createExam, listExams, getExam, deleteExam, countExamsToday,
+  updateExamReady, updateExamFailed, resetExamGenerating, countGeneratingExams, failStaleGeneratingExams,
   createPoster, listPosters, listLibraryPosters, listLibraryThemes, allPostersForAdmin, getPoster, deletePoster, updatePoster,
   putBlob, getBlob, createFeedback, countFeedbacksSince, listFeedbacks, insertAnalyticsEvents, runSql, getSql, allSql,
   deleteAccountData,

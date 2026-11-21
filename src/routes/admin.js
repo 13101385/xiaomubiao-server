@@ -619,4 +619,75 @@ router.get('/system', async (req, res) => {
   });
 });
 
+/* ==================== 数据库空间维护（2026-11-21） ====================
+ * 背景：deletePoster 只删 posters 行、不删 poster_blobs 成品图，
+ * 历史删除（下线/去重）留下大量孤儿 blob 把持久卷写满（SQLITE_FULL）。
+ * 这里提供只读统计与一键清理：只删「composed/<id>.* 且 id 已不在 posters 表」的孤儿图，
+ * 删后 VACUUM 把空间真正还给磁盘；全程写审计。
+ */
+async function blobStats() {
+  const pageRow = await db.getSql('PRAGMA page_count');
+  const sizeRow = await db.getSql('PRAGMA page_size');
+  const freeRow = await db.getSql('PRAGMA freelist_count');
+  const blobRow = await db.getSql('SELECT COUNT(*) AS n, COALESCE(SUM(LENGTH(data)),0) AS bytes FROM poster_blobs');
+  const posterRow = await db.getSql('SELECT COUNT(*) AS n FROM posters');
+  const keys = await db.allSql('SELECT key, LENGTH(data) AS bytes FROM poster_blobs');
+  const ids = new Set((await db.allSql('SELECT id FROM posters')).map(r => r.id));
+  let orphanCount = 0, orphanBytes = 0;
+  (keys || []).forEach(r => {
+    const m = /^composed\/(.+)\.(jpg|png)$/.exec(r.key || '');
+    if (m && !ids.has(m[1])) { orphanCount++; orphanBytes += r.bytes || 0; }
+  });
+  const pageCount = pageRow ? (pageRow.page_count || 0) : 0;
+  const pageSize = sizeRow ? (sizeRow.page_size || 0) : 0;
+  const freelist = freeRow ? (freeRow.freelist_count || 0) : 0;
+  return {
+    dbBytes: pageCount * pageSize,
+    freelistBytes: freelist * pageSize,
+    posters: posterRow ? posterRow.n : 0,
+    blobs: blobRow ? blobRow.n : 0,
+    blobBytes: blobRow ? blobRow.bytes : 0,
+    orphanCount, orphanBytes
+  };
+}
+
+router.get('/db-stats', async (req, res) => {
+  try {
+    res.json({ ok: true, data: await blobStats() });
+  } catch (err) {
+    console.error('[ADMIN] db-stats error:', err.message);
+    res.status(500).json({ ok: false, msg: '统计失败' });
+  }
+});
+
+router.post('/db-cleanup', async (req, res) => {
+  try {
+    const before = await blobStats();
+    const keys = await db.allSql('SELECT key FROM poster_blobs');
+    const ids = new Set((await db.allSql('SELECT id FROM posters')).map(r => r.id));
+    const orphans = (keys || []).map(r => r.key).filter(k => {
+      const m = /^composed\/(.+)\.(jpg|png)$/.exec(k || '');
+      return m && !ids.has(m[1]);
+    });
+    let deleted = 0;
+    for (let i = 0; i < orphans.length; i += 50) {
+      const batch = orphans.slice(i, i + 50);
+      const ph = batch.map(() => '?').join(',');
+      await db.runSql('DELETE FROM poster_blobs WHERE key IN (' + ph + ')', batch);
+      deleted += batch.length;
+    }
+    let vacuum = 'skipped';
+    if (deleted > 0) {
+      try { await db.runSql('VACUUM'); vacuum = 'done'; }
+      catch (e) { vacuum = 'failed: ' + e.message; }
+    }
+    const after = await blobStats();
+    await audit('db_cleanup', 'poster_blobs', 'deleted=' + deleted + ' vacuum=' + vacuum, req);
+    res.json({ ok: true, data: { deleted, vacuum, before, after } });
+  } catch (err) {
+    console.error('[ADMIN] db-cleanup error:', err.message);
+    res.status(500).json({ ok: false, msg: '清理失败' });
+  }
+});
+
 module.exports = router;

@@ -22,6 +22,8 @@ const DAILY_LIMIT = 20; // 每账号每日生成上限（防 API 费用失控）
 const SUBJECTS = ['语文', '数学', '英语', '物理', '化学', '生物', '历史', '地理', '政治'];
 const GRADES = ['小学一年级', '小学二年级', '小学三年级', '小学四年级', '小学五年级', '小学六年级', '初中一年级', '初中二年级', '初中三年级'];
 const DIFFICULTY = ['简单', '中等', '困难'];
+// PM-51：单元范围白名单（与前端 utils/exam.js 的 UNIT_RANGES 同口径，改一处须同步另一处）
+const UNIT_RANGES = ['全部单元', '第 1–2 单元', '第 1–4 单元', '第 5–8 单元'];
 const QUESTION_TYPES = ['选择题', '填空题', '判断题', '简答题', '计算题', '作文题'];
 
 /* ==================== agnes 调用 ==================== */
@@ -128,7 +130,7 @@ function buildPrompt(params) {
   const {
     subject, grade, knowledge, difficulty = '中等',
     choice = 0, fill = 0, trueFalse = 0, shortAnswer = 0, calculation = 0, essay = 0,
-    durationMin = 60, term = ''
+    durationMin = 60, term = '', unitRange = '全部单元'
   } = params;
 
   // 各题型分值
@@ -163,7 +165,7 @@ function buildPrompt(params) {
     : '';
 
   return `为「${grade}·${subject}」生成一份${difficulty}难度试卷。
-知识点：${knowledge || '该年级核心知识点'}${term ? '\n册次：' + term + '（只考' + term + '已学内容）' : ''}
+知识点：${knowledge || '该年级核心知识点'}${term ? '\n册次：' + term + '（只考' + term + '已学内容）' : ''}${unitRange && unitRange !== '全部单元' ? '\n单元范围：' + unitRange + '（只考该范围内的单元内容，超出该范围的单元一律不许出）' : ''}
 时长：${durationMin}分钟。
 
 【必须严格生成的题型和数量】
@@ -216,7 +218,7 @@ async function topUpExam(exam, effCounts, ctx, callJson) {
       const existing = exam.sections.flatMap(s => (s.questions || []).map(q => String(q.q || '').slice(0, 30)));
       const fragParams = {
         subject: ctx.subject, grade: ctx.grade, knowledge: ctx.knowledge,
-        difficulty: ctx.difficulty, term: ctx.term, durationMin: 60,
+        difficulty: ctx.difficulty, term: ctx.term, unitRange: ctx.unitRange, durationMin: 60,
         choice: 0, fill: 0, trueFalse: 0, shortAnswer: 0, calculation: 0, essay: 0
       };
       fragParams[type] = deficit;
@@ -272,7 +274,7 @@ router.post('/generate', async (req, res) => {
     accountId, openId = '', subject, grade,
     knowledge = '', difficulty = '中等',
     choice = 0, fill = 0, trueFalse = 0, shortAnswer = 0, calculation = 0, essay = 0,
-    durationMin = 60, term = ''
+    durationMin = 60, term = '', unitRange = '全部单元'
   } = req.body || {};
 
   // 参数校验
@@ -284,6 +286,8 @@ router.post('/generate', async (req, res) => {
   // 学科净化：计算题仅限数学，非数学学科的 calculation 等量补位简答（题数总量不变）
   const { counts, moved } = examQuality.sanitizeCountsForSubject(subject, { choice, fill, trueFalse, shortAnswer, calculation, essay });
   const termVal = (term === '上册' || term === '下册') ? term : '';
+  // PM-51：单元范围白名单校验（非法值回落「全部单元」，不让脏参数进提示词）
+  const unitRangeVal = UNIT_RANGES.includes(unitRange) ? unitRange : '全部单元';
   const totalQuestions = Object.values(counts).reduce((a, b) => a + (Number(b) || 0), 0);
   if (totalQuestions < 1) return res.status(400).json({ ok: false, msg: '请至少选择一种题型' });
   if (totalQuestions > 50) return res.status(400).json({ ok: false, msg: '题目数量过多（最多50题）' });
@@ -297,7 +301,7 @@ router.post('/generate', async (req, res) => {
       return res.status(429).json({ ok: false, msg: '今日生成已达上限（' + DAILY_LIMIT + ' 份），明天再来吧' });
     }
 
-    const prompt = buildPrompt(Object.assign({}, req.body, counts, { term: termVal }));
+    const prompt = buildPrompt(Object.assign({}, req.body, counts, { term: termVal, unitRange: unitRangeVal }));
     const exam = await callAgnes(prompt);
 
     // 校验返回结构
@@ -313,7 +317,7 @@ router.post('/generate', async (req, res) => {
     });
 
     // 质量管线：补解析 → 规则校验 → 客观题盲解复核 → 不合格重出/换题/丢弃 → 总分归一化（恒 100）
-    const ctx = { subject, grade, difficulty, knowledge, term: termVal };
+    const ctx = { subject, grade, difficulty, knowledge, term: termVal, unitRange: unitRangeVal };
     try {
       const { report } = await examQuality.processExam(exam, ctx, (p) => callAgnes(p));
       exam.quality = report;
@@ -341,7 +345,7 @@ router.post('/generate', async (req, res) => {
     exam.delivery = {
       requested: totalQuestions, delivered: deliveredQuestions,
       missing: Math.max(0, totalQuestions - deliveredQuestions), toppedUp,
-      crossSubjectMoved: moved, term: termVal
+      crossSubjectMoved: moved, term: termVal, unitRange: unitRangeVal
     };
 
     const record = {
@@ -351,7 +355,7 @@ router.post('/generate', async (req, res) => {
       subject,
       grade,
       title: exam.title || (grade + '·' + subject + '试卷'),
-      config: JSON.stringify({ subject, grade, knowledge, difficulty, durationMin, counts, term: termVal }),
+      config: JSON.stringify({ subject, grade, knowledge, difficulty, durationMin, counts, term: termVal, unitRange: unitRangeVal }),
       content: JSON.stringify(exam),
       createdAt: Date.now()
     };

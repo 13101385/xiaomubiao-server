@@ -131,6 +131,13 @@ function createTables() {
         if (err) console.warn('[DB] 清理失效 composed_url 失败:', err.message);
         else console.log('[DB] 已清理指向临时层的失效 composed_url');
       });
+      // 一次性回填（PM-92／INS-137）：/api/poster/save 旧版丢了 imageUrl，成品图记录
+      // image_url 恒为空串（列表无封面、详情 404）；图地址其实存在 content.imageUrl 里，
+      // 启动时把这类空壳记录的 image_url 回填回来。幂等：只动 image_url 为空的记录。
+      db.run("UPDATE posters SET image_url = json_extract(content, '$.imageUrl') WHERE source = 'image' AND (image_url IS NULL OR image_url = '') AND json_extract(content, '$.imageUrl') IS NOT NULL AND json_extract(content, '$.imageUrl') != ''", (err) => {
+        if (err) console.warn('[DB] 回填 posters.image_url 失败:', err.message);
+        else console.log('[DB] 已回填 posters.image_url（PM-92 空壳记录修复）');
+      });
     });
   });
 }

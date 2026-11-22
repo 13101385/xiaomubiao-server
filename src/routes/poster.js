@@ -565,7 +565,7 @@ router.post('/generate-image', async (req, res) => {
  * 此类记录放行无 grade（落库为空串）；其余路径（本地方案保存）仍须合法年级。
  */
 router.post('/save', async (req, res) => {
-  const { accountId, openId = '', theme, grade, title = '', content, source = '' } = req.body || {};
+  const { accountId, openId = '', theme, grade, title = '', content, source = '', imageUrl = '' } = req.body || {};
 
   // 参数校验
   if (!accountId) return res.status(400).json({ ok: false, msg: '缺少 accountId' });
@@ -588,6 +588,9 @@ router.post('/save', async (req, res) => {
   if (!contentObj || typeof contentObj !== 'object' || Array.isArray(contentObj)) {
     return res.status(400).json({ ok: false, msg: 'content 必须是 JSON 对象' });
   }
+  // PM-92（INS-137）：成品图保存的图地址在顶层 imageUrl 或 content.imageUrl 里，
+  // 旧版两个都没接住、image_url 恒空（列表无封面、详情 404）；这里收口取一处落库
+  const savedImageUrl = isImageSave ? String(imageUrl || contentObj.imageUrl || '') : '';
 
   try {
     const record = {
@@ -598,6 +601,7 @@ router.post('/save', async (req, res) => {
       grade: savedGrade,
       title: String(title).trim() || (String(theme).trim() + '手抄报'),
       source: isImageSave ? 'image' : 'template',
+      imageUrl: savedImageUrl,
       config: JSON.stringify({ theme, grade: savedGrade }),
       content: JSON.stringify(contentObj),
       createdAt: Date.now()

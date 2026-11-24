@@ -32,6 +32,7 @@ const homeworkRoutes = require('./routes/homework');
 const weekendRoutes = require('./routes/weekend');
 const welcomeRoutes = require('./routes/welcome');
 const analyticsRoutes = require('./routes/analytics');
+const familyRoutes = require('./routes/family');
 const adminRoutes = require('./routes/admin');
 const { startReminderScheduler } = require('./reminder-scheduler');
 const wxStats = require('./wx-stats');
@@ -94,6 +95,7 @@ app.use('/api/homework', homeworkRoutes);
 app.use('/api/weekend', weekendRoutes);
 app.use('/api/welcome', welcomeRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/family', familyRoutes);
 app.use('/admin', express.static(path.join(__dirname, '..', 'public', 'admin'))); app.use('/api/admin', adminRoutes); app.use('/api', feedbackRoutes);
 // 睡前故事音频静态托管：story-audio/<故事id>.mp3（AI 合成语音，文件带 ID3 标识）
 app.use('/story-audio', express.static(path.join(__dirname, '..', 'story-audio'), { maxAge: '7d', immutable: true }));

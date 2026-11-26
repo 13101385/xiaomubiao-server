@@ -1007,21 +1007,27 @@ function deleteAccountData(accountId) {
         const ids = (rows || []).map(r => r.id);
         const keys = ['avatar:' + accountId];
         ids.forEach(id => { keys.push('composed/' + id + '.jpg', 'composed/' + id + '.png'); });
-        const finish = (e) => (e ? reject(e) : resolve(true));
-        db.run('DELETE FROM posters WHERE account_id = ?', [accountId]);
-        db.run('DELETE FROM exams WHERE account_id = ?', [accountId]);
-        db.run('DELETE FROM reminder_subs WHERE account_id = ?', [accountId]);
-        db.run('DELETE FROM reminder_tasks WHERE account_id = ?', [accountId]);
-        db.run('DELETE FROM reminder_sent_log WHERE account_id = ?', [accountId]);
-        db.run('DELETE FROM reminder_daily_hooks WHERE account_id = ?', [accountId]);
-        db.run('DELETE FROM analytics_events WHERE account_id = ?', [accountId]);
-        db.run('DELETE FROM family_data WHERE account_id = ?', [accountId]);
-        db.run('DELETE FROM parent_records WHERE account_id = ?', [accountId], (e2) => {
-          if (e2) return finish(e2);
-          if (!keys.length) return finish();
-          const ph = keys.map(() => '?').join(',');
-          db.run('DELETE FROM poster_blobs WHERE key IN (' + ph + ')', keys, finish);
-        });
+                // 逐表顺序删除：任一失败即 reject（P1-3 修复：中间表失败不再静默报成功，
+        // 否则前端收到 ok:true 会清本机、用户以为服务端数据已删干净）
+        const tables = [
+          'posters', 'exams', 'reminder_subs', 'reminder_tasks',
+          'reminder_sent_log', 'reminder_daily_hooks', 'analytics_events',
+          'family_data', 'parent_records'
+        ];
+        let i = 0;
+        const step = () => {
+          if (i >= tables.length) {
+            if (!keys.length) return resolve(true);
+            const ph = keys.map(() => '?').join(',');
+            return db.run('DELETE FROM poster_blobs WHERE key IN (' + ph + ')', keys, (e) => (e ? reject(e) : resolve(true)));
+          }
+          const t = tables[i++];
+          db.run('DELETE FROM ' + t + ' WHERE account_id = ?', [accountId], (e) => {
+            if (e) return reject(e);
+            step();
+          });
+        };
+        step();
       });
     });
   });

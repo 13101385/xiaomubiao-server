@@ -379,6 +379,23 @@ function listExams(accountId) {
   });
 }
 
+/** PM-167：游客试卷迁移——把 from 账号名下的试卷改归属到 to 账号。
+ * 只改 account_id 归属字段，不删数据、不改内容；幂等（再调一次迁移 0 条）。
+  * exams.id 全局唯一、无账号级唯一冲突，「只迁移未归属冲突的记录」即 WHERE account_id = from
+   * 天然满足：已归属到 to 的记录不在 from 名下，不会被重复迁移。 */
+function migrateExams(fromAccountId, toAccountId) {
+    return new Promise((resolve, reject) => {
+          db.run(
+                  'UPDATE exams SET account_id = ? WHERE account_id = ?',
+                  [toAccountId, fromAccountId],
+                  function (err) {
+                            if (err) reject(err);
+                            else resolve({ migrated: this.changes || 0 });
+                  }
+                );
+    });
+}
+
 /** PM-87：异步生成完成——回填标题与题目内容，状态转 ready 并清失败原因 */
 function updateExamReady(examId, title, content) {
   return new Promise((resolve, reject) => {
@@ -1038,7 +1055,7 @@ module.exports = {
   getUserByOpenId, getUserByPhone, upsertUser, updateUserName,
   saveSmsCode, verifySmsCode,
   getParentRecord, saveParentRecord, upsertParentProfile, isParentRegistered,
-  createExam, listExams, getExam, getExamByCode, setExamCode, deleteExam, countExamsToday,
+  createExam, listExams, getExam, getExamByCode, setExamCode, deleteExam, countExamsToday, migrateExams,
   updateExamReady, updateExamFailed, resetExamGenerating, countGeneratingExams, failStaleGeneratingExams, updateExamConfig,
   createPoster, listPosters, listLibraryPosters, listLibraryThemes, allPostersForAdmin, getPoster, deletePoster, updatePoster,
   putBlob, getBlob, createFeedback, countFeedbacksSince, listFeedbacks, insertAnalyticsEvents, runSql, getSql, allSql,

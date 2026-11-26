@@ -478,6 +478,26 @@ router.post('/generate', async (req, res) => {
 });
 
 /**
+ * POST /api/exam/migrate（PM-167：游客出卷门控后移——登录后游客卷归属迁移）
+  * body: { fromAccountId, toAccountId }——把游客账号名下的试卷改归属到正式账号，
+   * 幂等、只改归属字段、不删数据；登录迁移链路调用，失败时前端明示、不阻断登录。
+    * 注意：必须注册在 '/:id/retry' 等参数路由之前，避免 '/migrate' 被当作 :id 匹配。
+     */
+router.post('/migrate', async (req, res) => {
+    const fromAccountId = (req.body && req.body.fromAccountId) || '';
+    const toAccountId = (req.body && req.body.toAccountId) || '';
+    if (!fromAccountId || !toAccountId) return res.status(400).json({ ok: false, msg: '缺少 fromAccountId 或 toAccountId' });
+    if (fromAccountId === toAccountId) return res.status(400).json({ ok: false, msg: 'fromAccountId 与 toAccountId 相同，无需迁移' });
+    try {
+          const r = await db.migrateExams(fromAccountId, toAccountId);
+          res.json({ ok: true, data: { migrated: r.migrated } });
+    } catch (err) {
+          console.error('[EXAM] migrate error:', err.message);
+          res.status(500).json({ ok: false, msg: '试卷迁移失败' });
+    }
+});
+
+/**
  * POST /api/exam/:id/retry
  * 失败重试：仅 failed 记录可重试，按落库 config 原参数重新异步生成。
  * body/query: { accountId }

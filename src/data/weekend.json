@@ -1,6 +1,6 @@
 {
- "dataVersion": "202611250023",
- "generatedAt": "2026-11-25T00:23:39.610Z",
+ "dataVersion": "202611280105",
+ "generatedAt": "2026-11-28T01:05:13.698Z",
  "cities": [
   {
    "key": "beijing",
@@ -702,7 +702,7 @@
      "duration": "半天",
      "rainyOk": true,
      "tip": "青铜器和陶瓷是镇馆之宝；带低龄娃直奔古代文明探索宫，记得提前单独预约。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "sh-museum-peoples",
@@ -717,7 +717,7 @@
      "duration": "半天",
      "rainyOk": true,
      "tip": "常设展已搬去东馆，这里现在只有美洲大展一个展，想看中国古代艺术别跑错馆。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "sh-science",
@@ -732,7 +732,7 @@
      "duration": "一整天",
      "rainyOk": true,
      "tip": "2026年焕新重开，新增「一米世界」低龄区；提前7天在官方小程序抢票，没有现场售票口。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "sh-natural",
@@ -747,7 +747,7 @@
      "duration": "半天",
      "rainyOk": true,
      "tip": "恐龙和非洲大草原动物是招牌；注意2026年3月起闭馆日改成周二，老攻略写的周一闭馆已过时。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "sh-astronomy",
@@ -762,7 +762,7 @@
      "duration": "一整天",
      "rainyOk": true,
      "tip": "在临港，离市区远，建议留一整天；官方小程序提前抢票，周末热门场次秒空，可串联海昌海洋公园。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "sh-children-museum",
@@ -777,7 +777,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "专门为低龄娃设计的博物馆，全程互动不枯燥，门口大草坪还能野餐放电。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "sh-auto",
@@ -792,7 +792,7 @@
      "duration": "半天",
      "rainyOk": true,
      "tip": "三层古董车和老爷车看个够，小车迷能耗一下午；离市区较远，建议自驾。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "sh-glass",
@@ -807,7 +807,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "能看师傅现场吹制玻璃，热力十足；儿童玻璃博物馆、玻璃迷宫等其他馆另购票，DIY项目要另约。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "sh-children-library",
@@ -822,7 +822,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "专为4–16岁建的图书馆，藏书近53万册，绘本区低龄友好；周末活动提前在公众号约。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "sh-history",
@@ -837,7 +837,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "在百年跑马总会大楼里看老上海生活，楼本身就是文物；逛完顺路走南京路步行街。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "sh-railway",
@@ -852,7 +852,7 @@
      "duration": "1–2 小时",
      "rainyOk": true,
      "tip": "老火车站房里停着真火车头，票价便宜、人少清净，是小火车迷的隐藏款。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "sh-insect",
@@ -867,7 +867,7 @@
      "duration": "1–2 小时",
      "rainyOk": true,
      "tip": "馆内设互动实验室，标本量惊人；小而精，不排队，适合顺路打卡。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "sh-expo",
@@ -882,7 +882,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "从1851年伦敦世博一路讲到上海世博，各国展品像环游世界，雨天备选佳。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "sh-film",
@@ -897,7 +897,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "在上影厂原址里看百年电影史，还有《大闹天宫》4D放映（另付30元），小动画迷别错过。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "sh-aquarium",
@@ -912,7 +912,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "155米海底隧道是招牌，就在东方明珠旁边，一次打卡两个陆家嘴地标。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "sh-zoo",
@@ -927,7 +927,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "地铁10号线直达，大熊猫和华南虎是明星；老牌动物园树多路平，适合推婴儿车。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "sh-wild",
@@ -987,7 +987,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "市区最大的生态公园，大草坪放风筝、镜天湖边骑行；露营搭帐篷按现场划定区域来。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "sh-gucun",
@@ -1002,7 +1002,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "春天樱花是上海顶流，平时有恐龙园和儿童乐园（另收费）；樱花季务必赶早避人流。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "sh-botanical",
@@ -1017,7 +1017,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "市区里的免费大花园，带娃认植物、捡落叶做标本；展览温室里藏着一片热带雨林。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "sh-chenshan",
@@ -1032,7 +1032,7 @@
      "duration": "一整天",
      "rainyOk": false,
      "tip": "已升格为国家植物园，矿坑花园和三大温室是招牌；园子很大，带娃建议坐园内电瓶车。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "sh-binjiang",
@@ -1047,7 +1047,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "长江、黄浦江、东海三水汇合处看大江景，林地湿地原生态；位置偏，适合自驾家庭。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "sh-gongqing",
@@ -1062,7 +1062,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "市区难得的真森林，大草坪能撒欢；11月底前正办上海菊花展，600多个品种免费看。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "sh-yuyuan",
@@ -1077,7 +1077,7 @@
      "duration": "2–3 小时",
      "rainyOk": false,
      "tip": "明代江南园林，九曲桥和湖心亭在园外免费区；逛完去城隍庙小吃街，南翔小笼是必吃。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "sh-zhujiajiao",
@@ -1092,7 +1092,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "坐摇橹船、过放生桥、吃阿婆粽和扎肉，地铁17号线可达；周末人多，建议上午早到。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "sh-disney",
@@ -1122,7 +1122,7 @@
      "duration": "1–2 小时",
      "rainyOk": false,
      "tip": "一边万国建筑、一边陆家嘴天际线，傍晚来能同时看日落和亮灯；节假日有人流管控，带娃避开高峰夜。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     }
    ],
    "events": [
@@ -1136,7 +1136,7 @@
      "periodText": "2026.7.9 – 2027.11.14（周一闭馆）",
      "age": "7–12 岁",
      "tip": "近3000件墨西哥、秘鲁文物，全价148元、亲子票200元（1大1小）；每月1日12点在上博官方小程序开放下个月门票。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "ev-sh-chrysanthemum",
@@ -1148,7 +1148,7 @@
      "periodText": "2026.10.24 – 11.29",
      "age": "3–12 岁",
      "tip": "600多个品种、近千盆精品菊免费看，复兴公园等还有6个分会场；11月29日就结束，别错过。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "ev-sh-sunyatsen",
@@ -1160,7 +1160,7 @@
      "periodText": "2026.10.30 – 2027.3.14",
      "age": "8–12 岁",
      "tip": "免费免预约，近130件文物加近300张历史图片讲孙中山在上海的故事，适合大孩子做历史课拓展。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "ev-sh-haidi",
@@ -1172,7 +1172,7 @@
      "periodText": "2026.12.27（周日）14:00，单场",
      "age": "6–12 岁",
      "tip": "凡尔纳经典搬上沉浸式舞台，鹦鹉螺号潜进深海，对抗风暴、漫步海底森林；票价180–480元，约70分钟，儿童凭票入场，提前订票。",
-     "verifiedDate": "2026-11-17"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "ev-sh-minecraft",
@@ -1209,6 +1209,18 @@
      "age": "3–6 岁",
      "tip": "韩国泡泡J正版授权：巨型泡泡、人体泡泡、泡泡雨把剧场变成童话王国，全场沉浸式互动；约60分钟，3岁+可看，特惠单人99元、亲子双人168元，提前订票。",
      "verifiedDate": "2026-11-21"
+    },
+    {
+     "id": "ev-sh-cainihowmuch",
+     "name": "气球魔术秀《猜猜我有多爱你》",
+     "venue": "上海虹桥艺术中心",
+     "placeId": "",
+     "startDate": "2026-12-12",
+     "endDate": "2026-12-12",
+     "periodText": "2026.12.12（周六），单日",
+     "age": "3–8 岁",
+     "tip": "改编自同名经典绘本的气球魔术互动秀；场次与票价以场馆官方渠道为准。",
+     "verifiedDate": "2026-11-28"
     }
    ]
   },
@@ -1971,8 +1983,8 @@
      "age": "3–12 岁",
      "duration": "半天至一天",
      "rainyOk": false,
-     "tip": "有大熊猫和猛兽谷，建议一开园就进，动物上午最活跃；个别场馆临时维护的情况，出发前看一眼官方公告。",
-     "verifiedDate": "2026-11-18"
+     "tip": "熊猫馆目前闭馆升级改造中（恢复时间以官方公告为准），百兽盛会与森林动物行为展示也暂停；猛兽谷、湿地鸟区等正常开放，动物上午最活跃，建议一开园就进。",
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "sz-xiaomeisha-ocean",
@@ -1982,12 +1994,12 @@
      "area": "盐田区",
      "address": "盐田区小梅沙海滨旅游度假区内",
      "openHours": "平日 10:00–17:30，周末及节假日 9:30–18:00（闭园前1小时停止入园）",
-     "ticket": "成人约240元，儿童、长者有优待票，以官方当日售票为准",
+     "ticket": "成人约230元，儿童、长者有优待票，以官方当日售票为准",
      "age": "3–12 岁",
      "duration": "半天",
      "rainyOk": true,
      "tip": "原址重建后2024年重新开放的新馆，白鲨、白鲸和人鱼表演是重头戏；部分票种下午3点后还能经观海连廊去海滨乐园玩沙。",
-     "verifiedDate": "2026-11-18"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "sz-guanlan-ocean",
@@ -2277,7 +2289,7 @@
      "duration": "半天",
      "rainyOk": true,
      "tip": "张大千真迹和巴蜀青铜是镇馆之宝，逛完出门就是浣花溪公园，可以连着玩。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cd-natural-museum",
@@ -2322,7 +2334,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "内有青少年阅读中心，双休日、节假日和寒暑假白天开放；雨天带娃来泡一天书毫无压力。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cd-tianfu-library",
@@ -2337,7 +2349,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "建在公园湖边的图书馆，有专门的少儿馆，看完书出门就能在草坪上撒欢。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cd-art-museum",
@@ -2352,7 +2364,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "A区天府美术馆和B区当代艺术馆隔湖相望，建筑本身就像艺术品，和隔壁图书馆一起逛。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cd-dufu-cottage",
@@ -2397,7 +2409,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "全国唯一一座建在地面的皇陵——前蜀皇帝王建的墓，棺床石刻精美，冷门人少。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cd-cuisine-museum",
@@ -2481,13 +2493,13 @@
      "emoji": "🐳",
      "area": "双流区",
      "address": "双流区海洋路68号（天府大道南段）",
-     "openHours": "淡季（11月–次年2月）9:30–17:00，平季（3–6月、9–10月）9:30–17:30，节假日及7–8月 9:00–18:30",
+     "openHours": "淡季（11月–次年2月）9:30–17:00，平季（3–6月、9–10月）9:30–17:30，节假日及7–8月 9:00–18:30；11 月周末夜场常延至 20:30（以官方当日公告为准）",
      "ticket": "全价票约240元、儿童/优待票约170元，价格随日期浮动，以官方当日售票为准；1.0米以下儿童免票",
      "age": "3–12 岁",
      "duration": "一天",
      "rainyOk": true,
      "tip": "白鲸、海豚表演是招牌，进门先查当日表演时间再逛；地铁1号线、18号线海昌路站可达。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cd-panda-valley",
@@ -2517,7 +2529,7 @@
      "duration": "2–3 小时",
      "rainyOk": false,
      "tip": "紧挨杜甫草堂和四川博物院，沿溪有诗歌大道，逛完博物馆来这里喂鱼放电正好。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cd-peoples-park",
@@ -2532,7 +2544,7 @@
      "duration": "2–3 小时",
      "rainyOk": false,
      "tip": "带娃在百年鹤鸣茶社坐竹椅喝一杯盖碗茶，再去人工湖划船，就是一堂成都慢生活现场课。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cd-wangjianglou",
@@ -2547,7 +2559,7 @@
      "duration": "2–3 小时",
      "rainyOk": false,
      "tip": "全国竹子品种最多的公园，纪念女诗人薛涛的望江楼就在锦江边，从南门进免费区就够逛。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cd-dongjiao",
@@ -2562,7 +2574,7 @@
      "duration": "2–3 小时",
      "rainyOk": false,
      "tip": "老工厂改的文艺园区，火车头和铁轨是娃的最爱，周末常有市集和演出，傍晚亮灯更好看。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cd-guixi",
@@ -2577,7 +2589,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "有9个人民公园大的「成都版中央公园」，大草坪、湖边绿道随便跑，环球中心逛累了过来躺平。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cd-qinglonghu",
@@ -2592,7 +2604,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "中心城区最大的城市湿地，地铁4号线成都大学站出站即到；租辆亲子车环湖骑行，秋冬还能观鸟。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cd-xinglonghu",
@@ -2607,7 +2619,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "环湖约5.8公里适合骑行，湖畔「水下书店」建筑本身就很出片（营业以现场为准）；傍晚去白泽台看落日最值。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cd-furongyuan",
@@ -2622,7 +2634,7 @@
      "duration": "2–3 小时",
      "rainyOk": false,
      "tip": "以成都市花芙蓉为主题的公园，10月中旬至11月初是盛花期；超大草坪可露营，地铁10号线华兴站再骑行一段可达。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cd-happy-valley",
@@ -2652,7 +2664,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "「五朵金花」农家乐发源地：幸福梅林看梅花、江家菜地带娃体验种菜摘菜，适合全家慢悠悠待半天。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cd-lukedao",
@@ -2667,7 +2679,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "坐船上岛才有的度假感：大草坪、小动物农场、浅滩玩水一站齐；务必提前几天约好免费船票，约满就上不了岛。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     }
    ],
    "events": [
@@ -2681,7 +2693,7 @@
      "periodText": "2026.9.30 – 12.27",
      "age": "6–12 岁",
      "tip": "英国V&A国宝级陶瓷首次来蓉，202件珍品免费看（含为俄国女皇定制的「青蛙餐具」），随成博入馆预约一起约。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "ev-cd-yongle",
@@ -2693,7 +2705,7 @@
      "periodText": "2026.7.9 – 12.6",
      "age": "7–12 岁",
      "tip": "元代永乐宫壁画与建筑艺术口碑巡展，特展票48元（入馆预约免费）；12月6日就撤展，还有沉浸投影，带娃看正合适。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "ev-cd-changzheng",
@@ -2705,7 +2717,7 @@
      "periodText": "2026.10.16 – 2027.3.31",
      "age": "8–12 岁",
      "tip": "纪念长征胜利90周年，十余家博物馆120余件/套革命文物，免费随入馆预约，给大孩子的一堂现场历史课。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "ev-cd-shuxuexiu",
@@ -2774,7 +2786,7 @@
      "duration": "半天",
      "rainyOk": true,
      "tip": "良渚玉琮、万工轿、富春山居图等镇馆之宝都在这里；新馆大到一天逛不完，带娃先锁定一两个展厅。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "hz-zhejiang-museum-gushan",
@@ -2789,7 +2801,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "藏在西湖孤山脚下的老馆，园林味十足，紧挨西泠印社和白堤；精华文物多在之江馆，这边胜在氛围，部分展厅维护情况以馆方当日公告为准。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "hz-natural-museum",
@@ -2804,7 +2816,7 @@
      "duration": "半天",
      "rainyOk": true,
      "tip": "恐龙化石和野生动物标本是孩子的最爱；和省科技馆同在西湖文化广场，体力够可以一天连逛两馆。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "hz-science-museum",
@@ -2819,7 +2831,7 @@
      "duration": "半天",
      "rainyOk": true,
      "tip": "动手展项多，还有低龄儿童专区，是杭州遛娃的雨天王牌；注意它周一周二都闭馆，别按普通博物馆的节奏跑空。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "hz-arts-crafts",
@@ -2834,7 +2846,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "一个馆群连逛工艺美术、刀剪剑、扇、伞四馆，常有非遗手作体验；逛完顺路走拱宸桥、桥西老街。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "hz-silk-museum",
@@ -2849,7 +2861,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "有专门的儿童馆和织造坊，娃能看老织机、认识蚕宝宝；馆里大草坪和白鹅也别错过，眼下还有郭培华服特展可顺带看。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "hz-tea-museum",
@@ -2864,7 +2876,7 @@
      "duration": "2–3 小时",
      "rainyOk": false,
      "tip": "展馆就藏在龙井茶园里，看展、走茶山、认茶树一条线；适合和满觉陇、龙井村排成半天的慢行程。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "hz-library",
@@ -2879,7 +2891,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "一层儿童借阅区绘本多、座位足，雨天泡半天没问题；市民中心一带开阔，逛完可在钱江新城江边散步。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "hz-children-library",
@@ -2894,7 +2906,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "专门给孩子的图书馆：低幼区有绘本和玩具，周末常有亲子活动和市集；离西湖边不远，借完书顺路去湖边走走。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "hz-liangzhu-museum",
@@ -2909,7 +2921,7 @@
      "duration": "半天",
      "rainyOk": true,
      "tip": "五千年良渚玉器讲得清楚又好看，建筑本身也值得看；离市区较远，建议和良渚古城遗址公园凑成一整天。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "hz-kuahuqiao",
@@ -2924,7 +2936,7 @@
      "duration": "1–2 小时",
      "rainyOk": true,
      "tip": "镇馆之宝是 8000 年前的独木舟——「中华第一舟」；馆小精悍，和湘湖、长乔极地海洋公园同片区，顺路连玩最划算。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "hz-deshou-palace",
@@ -2939,7 +2951,7 @@
      "duration": "半天",
      "rainyOk": true,
      "tip": "杭州最难约的馆之一，周末号源常秒空：提前几天在公众号蹲号、约上午场人更少；红墙超出片，数字投影讲南宋宫殿很对孩子胃口。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "hz-wetland-museum",
@@ -2954,7 +2966,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "先在这里看湿地生态大缸和标本，再进西溪实地对照着找鸟、认植物，孩子的观察会细很多。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "hz-water-museum",
@@ -2969,7 +2981,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "玻璃宝塔可以登顶俯瞰钱塘江，大禹治水、都江堰的故事讲得直观；在钱塘江南岸，可和钱江世纪公园排一条线。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "hz-zoo",
@@ -2984,7 +2996,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "20 元看大熊猫、长颈鹿和大象，性价比之王；隔壁就是少儿公园，两园连玩一整天，早到动物更活跃。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "hz-safari",
@@ -2999,7 +3011,7 @@
      "duration": "一整天",
      "rainyOk": false,
      "tip": "免费小火车和自驾走同一条车行区路线，别多花约 200 元/辆的自驾费；开园就冲，上午动物最活跃，地铁 6 号线野生动物园东站有免费接驳车。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "hz-polar-ocean",
@@ -3009,12 +3021,12 @@
      "area": "萧山区",
      "address": "萧山区湘湖路777号（湘湖旅游度假区）",
      "openHours": "9:00–17:00（16:30 停止入园）",
-     "ticket": "全价票约 350 元，以官方当日售票为准",
+     "ticket": "全价票约 360 元，以官方当日售票为准",
      "age": "3–10 岁",
      "duration": "半天",
      "rainyOk": true,
      "tip": "白鲸、企鹅、北极熊加海洋剧场，进门先记好演出时间表再逛展区；和跨湖桥博物馆、湘湖在同一片，能凑成一天。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "hz-children-park",
@@ -3029,7 +3041,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "杭州娃的集体记忆：项目按项付费、单价便宜不浪费，桂花季满园飘香；紧挨动物园，体力好的家庭两园连刷。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "hz-youth-palace",
@@ -3044,7 +3056,7 @@
      "duration": "2–3 小时",
      "rainyOk": false,
      "tip": "西湖边最亲民的游乐地：摩天轮能看湖景，碰碰车、旋转木马单价都便宜；玩完沿北山街散步去断桥。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "hz-botanical-garden",
@@ -3059,7 +3071,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "市区里的大森林：玉泉看鱼、竹林散步、草坪野餐都适合低龄娃，秋季还有菊展；人比西湖边少得多。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "hz-taiziwan",
@@ -3074,7 +3086,7 @@
      "duration": "2–3 小时",
      "rainyOk": false,
      "tip": "大草坪、风车和小溪是娃放电的标配；3–4 月郁金香季人最多，务必提前预约并赶早场，平时则清净好逛。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "hz-xixi",
@@ -3089,7 +3101,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "第一次来从周家村坐船进核心区最省腿；预算敏感就走北门免费线（福堤＋河渚街＋湿地博物馆），一样有水乡味，还不用买门票。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "hz-liangzhu-park",
@@ -3104,7 +3116,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "在世界遗产里看小鹿、坐观光车逛五千年古城；园区大到必须坐车，先冲鹿苑再看莫角山宫殿区。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "hz-xianghu",
@@ -3119,7 +3131,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "西湖的「姐妹湖」，人却少一大半：环湖骑行、湖边草坪、城山广场都舒服，和跨湖桥博物馆、长乔海洋公园连成湘湖亲子一日线。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "hz-baita-park",
@@ -3134,7 +3146,7 @@
      "duration": "2–3 小时",
      "rainyOk": false,
      "tip": "老铁轨、绿皮火车和千年白塔，火车迷小朋友会走不动道；小火车周末常满座，建议提前在官方公众号预约。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "hz-gongchenqiao",
@@ -3149,7 +3161,7 @@
      "duration": "2–3 小时",
      "rainyOk": false,
      "tip": "登拱宸桥看大运河，再逛桥西老街和扇、伞、刀剪剑博物馆；从武林门坐 3 元水上巴士过来，船上看运河最对味。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "hz-huagang",
@@ -3164,7 +3176,7 @@
      "duration": "2–3 小时",
      "rainyOk": false,
      "tip": "红鱼池喂鱼、看孔雀、大草坪撒欢，是低龄娃的西湖入门点；和太子湾、苏堤可以串成一条慢逛线。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     }
    ],
    "events": [
@@ -3178,7 +3190,7 @@
      "periodText": "2026.11.10 – 12.6（周一闭馆）",
      "age": "7–12 岁",
      "tip": "镇馆之宝真迹一年只短暂亮相这一阵，错过要等明年；需提前在「云上浙博」预约，出发前先给娃讲讲黄公望和这幅画「分居两岸」的故事。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "ev-hz-guopei",
@@ -3190,7 +3202,7 @@
      "periodText": "2026.9.27 – 2027.8.31（周一闭馆）",
      "age": "5–12 岁",
      "tip": "郭培的高定华服像从童话里走出来的，喜欢漂亮裙子的娃会看得挪不动脚；随丝绸博物馆免费参观，可一并逛儿童馆和织造坊。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "ev-hz-congpu",
@@ -3202,7 +3214,7 @@
      "periodText": "2026.9.12 – 11.29（周一闭馆）",
      "age": "7–12 岁",
      "tip": "良渚玉琮专题大展，11 月 29 日就结束，要去趁早；和常设展连着看，先认认玉琮上的「神人兽面纹」再去古城遗址公园更带感。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "ev-hz-jiangmo",
@@ -3259,7 +3271,7 @@
      "duration": "半天",
      "rainyOk": true,
      "tip": "巴渝文化和三峡文物是主线，四楼常有免费临展；对面就是人民大礼堂，可一起逛。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-science",
@@ -3274,7 +3286,7 @@
      "duration": "一整天",
      "rainyOk": true,
      "tip": "低龄娃直奔儿童科学乐园，名额最紧张；逛完可到江北嘴江边看对岸洪崖洞。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-natural",
@@ -3289,7 +3301,7 @@
      "duration": "半天",
      "rainyOk": true,
      "tip": "恐龙骨架和动物标本是招牌，周末票放票就秒空，定好闹钟提前约；离主城约 40 分钟车程。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-hongyan",
@@ -3304,7 +3316,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "中共中央南方局和八路军驻重庆办事处旧址都在这里，是给大孩子讲《红岩》的源头；展陈文字多，低龄娃容易坐不住。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-art",
@@ -3319,7 +3331,7 @@
      "duration": "1–2 小时",
      "rainyOk": true,
      "tip": "就在解放碑边上，红色「筷子楼」本身就很出片；展览常换新，适合逛解放碑时顺路带娃看一场。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-planning",
@@ -3334,7 +3346,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "巨型重庆主城沙盘最震撼，孩子能一眼看懂两江四岸；出馆下楼就是弹子石老街，可以连着逛。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-library",
@@ -3349,7 +3361,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "少儿阅览区绘本多，周末常有亲子阅读活动；注意周一只有下午开放，别上午跑空。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-children-library",
@@ -3364,7 +3376,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "专门给孩子的图书馆，按年龄分区选书；就在园博园东门边，上午看书、下午逛园刚好拼成一天。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-industry",
@@ -3379,7 +3391,7 @@
      "duration": "半天",
      "rainyOk": true,
      "tip": "老重钢厂房里的百年蒸汽机和老火车头是小车迷最爱，人少清静；园区开阔有坡道，带小娃注意防晒。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-baiheliang",
@@ -3394,7 +3406,7 @@
      "duration": "1–2 小时",
      "rainyOk": true,
      "tip": "坐超长扶梯下到长江江底，透过观察窗看千年石鱼题刻，全世界独一份；离主城较远，高铁到涪陵北站约 40 分钟，建议留大半天。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-bayu-folk",
@@ -3409,7 +3421,7 @@
      "duration": "1–2 小时",
      "rainyOk": true,
      "tip": "雕花木床、老家具和巴渝婚俗展很接地气，馆就藏在碧津公园里，逛完顺手在公园放电；规模不大，别单独跑一趟。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-sichuan-opera",
@@ -3424,7 +3436,7 @@
      "duration": "1–2 小时",
      "rainyOk": true,
      "tip": "变脸脸谱和华丽戏服最吸引孩子，运气好能碰上艺术中心排练；适合住在人和、园博园一带顺路去。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-war-sites",
@@ -3439,7 +3451,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "陪都时期的老别墅群散落在山林里，是露天遗址群，要走不少坡路台阶，穿舒适鞋；可与南山植物园安排在同一天。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-zoo",
@@ -3449,12 +3461,12 @@
      "area": "九龙坡区",
      "address": "九龙坡区西郊一村1号",
      "openHours": "8:00–18:00（16:30 停止入园）",
-     "ticket": "成人 25 元，儿童、学生 12.5 元；6 岁以下或 1.2 米以下免费",
+     "ticket": "成人 25 元（12 月 20 元），儿童、学生 12.5 元；6 岁以下或 1.2 米以下免费",
      "age": "3–12 岁",
      "duration": "半天",
      "rainyOk": false,
      "tip": "20 多只大熊猫，数量全国数一数二，上午 9 点和下午 3 点前后最活跃；园内坡路多，推车走东二门路线更平缓。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-leheledu",
@@ -3469,7 +3481,7 @@
      "duration": "一整天",
      "rainyOk": false,
      "tip": "车行区坐观光车近距离看狮子老虎是招牌；离主城约 1 小时车程，建议留一整天，水上乐园只在夏季开放。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-hanhai",
@@ -3484,7 +3496,7 @@
      "duration": "半天",
      "rainyOk": true,
      "tip": "海底隧道和水母区最出片，轨道 3 号线学堂湾站步行可达；刚开园时人最少，表演场次先在公众号看好。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-ocean-world",
@@ -3499,7 +3511,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "藏在商场里的中小型海洋馆，胜在离市区近、雨天能兜底；先查好美人鱼和海狮表演时间再进去逛。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-central-park",
@@ -3514,7 +3526,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "约 200 亩阳光大草坪随便跑，带上帐篷、风筝和泡泡机；公园南北很长，导航到阳光草坡附近入口少走冤枉路。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-garden-expo",
@@ -3529,7 +3541,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "全国各地的园林缩微版一圈逛遍，园子大、坡又多，带娃建议坐电瓶车分段玩；少年儿童图书馆就在东门旁。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-hongen",
@@ -3544,7 +3556,7 @@
      "duration": "2–3 小时",
      "rainyOk": false,
      "tip": "傍晚登鸿恩阁看两江夜景是本地人私藏玩法，亮灯时间随季节调整；上山全是台阶，推车不友好，穿防滑鞋。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-nanshan-botanical",
@@ -3559,7 +3571,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "温室里比人高的仙人掌和热带植物是孩子最爱，春季看樱花、秋季闻桂花；上山路弯多，自驾慢行。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-eling",
@@ -3574,7 +3586,7 @@
      "duration": "1–2 小时",
      "rainyOk": false,
      "tip": "登瞰胜楼一次看尽两江，视野不输收费观景台；公园在山脊上，全程坡坎台阶，别推婴儿车，傍晚看日落最美。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-happy-valley",
@@ -3583,13 +3595,13 @@
      "emoji": "🎢",
      "area": "渝北区",
      "address": "渝北区金渝大道29号",
-     "openHours": "9:30 开园，闭园时间随季节与夜场安排调整（以官方当日公告为准）",
+     "openHours": "11 月 10:00–18:30（17:30 停止入园），闭园时间随季节与夜场安排调整（以官方当日公告为准）",
      "ticket": "全价票约 220 元、儿童票约 150 元，1.2 米以下免费（以官方当日售票为准）",
      "age": "4–12 岁",
      "duration": "一整天",
      "rainyOk": false,
      "tip": "低龄娃主攻超级飞侠区和欢乐时光区，很多项目有身高门槛，先在官方小程序查好身高要求再买票，免得娃进园干瞪眼。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-maya-beach",
@@ -3604,7 +3616,7 @@
      "duration": "一整天",
      "rainyOk": false,
      "tip": "一万平方米造浪池是西南最大，低龄区有宝贝水城；现在是冬季闭园期，等夏天开园再来，出发前先查当年开园日期。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-zhazidong",
@@ -3619,7 +3631,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "《红岩》原型地，内容沉重，建议先给大孩子讲过江姐的故事再来；两处之间有几公里山路，可坐景区摆渡车，台阶多、推车不便。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-shibati",
@@ -3634,7 +3646,7 @@
      "duration": "2–3 小时",
      "rainyOk": false,
      "tip": "从较场口一端进入是全程下坡的省力走法；200 多级石梯没有电梯，千万别推婴儿车，旁边的山城巷悬空栈道可顺路一起走。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-danzishi",
@@ -3649,7 +3661,7 @@
      "duration": "1–2 小时",
      "rainyOk": false,
      "tip": "依坡而建的老街层层向上，登顶看两江汇流和大剧院夜景角度一流；傍晚亮灯后来最美，石板路推车费劲，穿舒适鞋。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "cq-ciqikou",
@@ -3664,7 +3676,7 @@
      "duration": "2–3 小时",
      "rainyOk": false,
      "tip": "陈麻花、毛血旺是标配；节假日主街人挤人，带娃建议走后街和滨江路，石板路高低不平，穿舒适鞋、别推车。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     }
    ],
    "events": [
@@ -3678,7 +3690,7 @@
      "periodText": "2026.9.29 – 2027.1.3（周一闭馆）",
      "age": "6–12 岁",
      "tip": "免费看，讲巫山龙骨坡和早期人类考古，正好接上自然博物馆的化石话题；展期来源为馆方展览公告。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "ev-cq-matisse",
@@ -3690,7 +3702,7 @@
      "periodText": "2026.9.19 – 2027.2.21",
      "age": "6–12 岁",
      "tip": "大色块剪纸风最对孩子胃口，是很好的色彩启蒙展；展期据华龙网文艺资讯公布，购票方式以场馆官方渠道为准。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "ev-cq-community-art",
@@ -3702,7 +3714,7 @@
      "periodText": "2026.11.8 – 12.1",
      "age": "7–12 岁",
      "tip": "把社区生活搬进美术馆的互动型展览，在黄桷坪涂鸦街一带，可顺路逛川美老校区周边；展期据中新网、华龙网开幕报道，12 月 1 日结束，别拖太晚。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "ev-cq-shuxuexiu",
@@ -3715,6 +3727,18 @@
      "age": "6–12 岁",
      "tip": "80 分钟把数学变闯关游戏：坐标、拓扑、二进制都上舞台，票价 40 元起，具体以官方售票为准。",
      "verifiedDate": "2026-11-15"
+    },
+    {
+     "id": "ev-cq-bingxue",
+     "name": "冰雪奇幻儿童剧《冰雪女王》",
+     "venue": "国泰艺术中心云卫剧场（小剧场）",
+     "placeId": "",
+     "startDate": "2026-12-12",
+     "endDate": "2026-12-26",
+     "periodText": "2026.12.12 15:30、12.26 11:00，两场",
+     "age": "3–12 岁",
+     "tip": "改编自安徒生童话《白雪皇后》的冰雪奇幻儿童剧，票价 60 元起；购票走国泰艺术中心官方渠道。",
+     "verifiedDate": "2026-11-28"
     }
    ]
   },
@@ -3730,12 +3754,12 @@
      "area": "武昌区",
      "address": "武昌区东湖路160号",
      "openHours": "周二至周日 9:00–17:00（16:00 停止入馆），周一闭馆；周六、周日及法定节假日延时至 20:30（19:30 停止入馆）",
-     "ticket": "免费，须实名预约（官方公众号/官网提前 5 天放票，每日约 17:18 放新一天名额）；编钟演出另购票约 50 元",
+     "ticket": "免费，须实名预约（官方公众号/官网提前 5 天放票，每日 0 点放最新可预约日门票）；编钟演出另购票约 50 元",
      "age": "5–12 岁",
      "duration": "大半天",
      "rainyOk": true,
      "tip": "越王勾践剑和曾侯乙编钟是镇馆之宝，周末名额秒光，定好闹钟提前 5 天抢票；编钟演出场次以馆内公告为准，进馆先看场次表。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-wuhan-museum",
@@ -3750,7 +3774,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "省博抢不到票就来这里，人少不用约，青铜器和书画一样能看半天；地铁 2 号线汉口火车站直达，停车也方便。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-natural-museum",
@@ -3765,7 +3789,7 @@
      "duration": "半天",
      "rainyOk": true,
      "tip": "大河生命馆的大型动物标本像走进纪录片现场；门票花在园博园上，一张票两个地方一起玩，别只逛馆就走。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-science-museum",
@@ -3780,7 +3804,7 @@
      "duration": "半天",
      "rainyOk": true,
      "tip": "老客运港大楼改成的科技馆，宇宙、生命、水展厅都是动手玩的项目；周末热门展项排队久，建议开馆就到。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-library",
@@ -3795,7 +3819,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "少儿借阅区绘本和低幼读物很全，办张借阅证把周末变成亲子阅读日；周末上午人最少、座位最好找。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-children-library",
@@ -3810,7 +3834,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "专门给孩子的图书馆，低幼绘本区和千字屋创意空间是特色；「马良杯」书画赛、「楚童杯」读书汇等全市少儿活动常在这里发布。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-xinhai-museum",
@@ -3825,7 +3849,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "两个馆闭馆日正好错开，周一去北馆、周二去南馆都不扑空；红楼是首义地标，适合给大孩子现场讲武汉的历史。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-revolution-museum",
@@ -3840,7 +3864,7 @@
      "duration": "2 小时",
      "rainyOk": true,
      "tip": "农讲所旧址可以坐在老教室的课桌前听讲，代入感很强；和毛泽东同志旧居、中共五大会址在同一片，可以一线串着走。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-jianghanguan",
@@ -3855,7 +3879,7 @@
      "duration": "1–2 小时",
      "rainyOk": true,
      "tip": "江汉关大楼本身就是文物，钟楼整点报时声传很远；看完出门就是江滩和江汉路，半天行程正好接上。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-planning-hall",
@@ -3870,7 +3894,7 @@
      "duration": "1–2 小时",
      "rainyOk": true,
      "tip": "注意周日不开门，亲子行程只能排周六；巨大的城市总规沙盘最吸娃，先在沙盘上找到自家小区再出门认路。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-art-museum",
@@ -3885,7 +3909,7 @@
      "duration": "2 小时",
      "rainyOk": true,
      "tip": "外墙上的红气球是江汉路地标；2026 武汉双年展期间汉口馆、琴台馆两馆联动，看展要预留大半天。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-baqi-memorial",
@@ -3900,7 +3924,7 @@
      "duration": "1 小时",
      "rainyOk": true,
      "tip": "藏在老租界洋房里的小纪念馆，人少安静；顺路把鄱阳街、黎黄陂路的老建筑一起逛了，是一堂现成的近代史课。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-zhangzhidong",
@@ -3915,7 +3939,7 @@
      "duration": "1–2 小时",
      "rainyOk": true,
      "tip": "注意只开到下午 3 点半，要赶早；盘龙造型的大楼本身很出片，看完去汉阳造园区逛逛文创小店。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-wuhan-university",
@@ -3930,7 +3954,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "非花季带孩子爬珞珈山、看老斋舍和樱花城堡很治愈；3 月花季千万别临时起意，预约通道只在花季开放且名额秒光。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-zoo",
@@ -3945,7 +3969,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "2023 年改造后重新开放，大熊猫馆和非洲草原区是招牌；园区大坡也多，带小娃建议带推车或租代步车。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-eastlake-ocean",
@@ -3960,7 +3984,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "海底隧道是经典项目，同园飞鸟世界里有能近距离打招呼的水豚；和东湖绿道、梨园在同一片，玩完顺路骑行。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-polar-ocean",
@@ -3975,7 +3999,7 @@
      "duration": "大半天",
      "rainyOk": true,
      "tip": "白鲸、企鹅加极地大马戏是招牌；含表演的联票尽量提前一天在官方渠道买好，个别直播间套票次日才生效，别当天买了进不去。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-wildlife-kingdom",
@@ -3990,7 +4014,7 @@
      "duration": "大半天",
      "rainyOk": false,
      "tip": "在蔡甸，离市区远，适合自驾单独安排大半天，别和市区行程硬拼在同一天；坐观光车看散养动物是主要玩法。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-eastlake-greenway",
@@ -4005,7 +4029,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "全程平缓少台阶，骑行、滑板车、推婴儿车都友好；梨园进、磨山出的湖山线是经典亲子路线，游船单程约 38 元。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-eastlake-moshan",
@@ -4020,7 +4044,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "春天去樱园看夜樱，平时坐索道上磨山看东湖全景；非花季人少景美，大草坪适合野餐放电。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-eastlake-luoyan",
@@ -4035,7 +4059,7 @@
      "duration": "2–3 小时",
      "rainyOk": false,
      "tip": "东湖边最便宜的收费景区，竹筏、索桥和芦苇荡很有野趣，人也比磨山少，适合想安静放电的家庭。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-expo-garden",
@@ -4050,7 +4074,7 @@
      "duration": "大半天",
      "rainyOk": false,
      "tip": "全国各地的园林缩微在一个园子里，一天走遍「全国」；园内还有免费的自然博物馆，玩完去汉口里吃老汉口小吃。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-jiefang-park",
@@ -4065,7 +4089,7 @@
      "duration": "2–3 小时",
      "rainyOk": false,
      "tip": "市中心老牌大公园，鸽子广场喂鸽子是保留节目；树多荫凉，夏天遛娃不晒，还能顺路逛武汉天地。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-zhongshan-park",
@@ -4080,7 +4104,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "武汉娃的童年记忆：大门免费、游乐项目单买，碰碰车、小过山车按需消费，比大型主题乐园省钱可控。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-happy-valley",
@@ -4095,7 +4119,7 @@
      "duration": "一整天",
      "rainyOk": false,
      "tip": "低龄娃直奔甜品王国和欢乐海洋区，别一进门就去排大项目；夜场票便宜，但小娃能玩的项目关得早。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-hankou-beach",
@@ -4110,7 +4134,7 @@
      "duration": "2–3 小时",
      "rainyOk": false,
      "tip": "秋冬芦苇季和春天放风筝是招牌，大草坪随便跑；傍晚留到华灯初上，江对岸的灯光秀机位也在这里。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-tanhualin",
@@ -4125,7 +4149,7 @@
      "duration": "2–3 小时",
      "rainyOk": false,
      "tip": "老武昌的文艺街巷，带娃逛文创小店、吃小吃刚刚好；街区多坡道，推婴儿车建议走主街平缓段。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "wh-botanical-garden",
@@ -4140,7 +4164,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "中科院的植物园，景观温室里有热带雨林和食虫植物，四季有花展；和磨山、东湖绿道挨着，可以排在同一天。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     }
    ],
    "events": [
@@ -4154,7 +4178,7 @@
      "periodText": "2026.10.1 – 2027.5.30（周一闭馆）",
      "age": "6–12 岁",
      "tip": "22 个国家 370 多位艺术家 500 多件作品，是武汉今年最大的展；汉口馆外墙的红气球和周边街区橱窗展 24 小时免费看，馆内特展收费以美术馆公告为准。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "ev-wh-lixiaoxuan",
@@ -4166,7 +4190,7 @@
      "periodText": "2026.8.30 – 2027.2.26",
      "age": "8–12 岁",
      "tip": "四十多年水墨大型回顾展，还有数千方篆刻印稿，适合给大孩子做一次美术启蒙；合美术馆在藏龙岛，路程较远，建议顺路安排。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "ev-wh-bluey",
@@ -4179,6 +4203,18 @@
      "age": "3–8 岁",
      "tip": "BBC正版授权舞台剧，跟着布鲁伊一家做游戏、解谜题寻宝；票价100–480元，全长约70分钟无中场休息，低龄娃第一次进剧场的好选择，尽早买票。",
      "verifiedDate": "2026-11-16"
+    },
+    {
+     "id": "ev-wh-hkcc",
+     "name": "香港儿童合唱团新年音乐会（华中巡演·武汉站）",
+     "venue": "武汉琴台音乐厅",
+     "placeId": "",
+     "startDate": "2026-12-25",
+     "endDate": "2026-12-25",
+     "periodText": "2026.12.25（周五）19:30，单场",
+     "age": "5–12 岁",
+     "tip": "香港儿童合唱团华中巡演武汉站新年音乐会，票价 50/100/150/200 元，以官方售票为准，提前订票。",
+     "verifiedDate": "2026-11-28"
     }
    ]
   },
@@ -4199,7 +4235,7 @@
      "duration": "半天",
      "rainyOk": true,
      "tip": "全国最难约的博物馆之一：官方公众号提前5天放票、每天17:00开抢，周末号几分钟就没，务必先定闹钟；约不上就买收费特展票进馆，或转战免费免预约的秦汉馆。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "xa-qinhan",
@@ -4214,7 +4250,7 @@
      "duration": "半天",
      "rainyOk": true,
      "tip": "本馆约不上的最佳平替：免费免预约、人少展厅大，秦汉文物慢慢看，还有墓室壁画特展。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "xa-museum",
@@ -4229,7 +4265,7 @@
      "duration": "半天",
      "rainyOk": true,
      "tip": "博物馆+小雁塔+园林一次逛完；二楼临展厅「楮墨长安」古籍文献特展展出至2027年8月。负一层展厅2026年11月起改造约两个月，园区和临展厅照常开放。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "xa-beilin",
@@ -4244,7 +4280,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "北扩新馆2025年已全面开放，新老两区一起逛才完整；11月工作日有免费公益讲解，在检票口内的讲解接待处集合。低龄娃看石碑容易闷，更适合大孩子。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "xa-banpo",
@@ -4259,7 +4295,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "6000年前的村落遗址大厅加人面鱼纹盆，2026年2月升级后重新开放；配着课本讲原始社会，孩子一看就懂。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "xa-nature",
@@ -4274,7 +4310,7 @@
      "duration": "半天",
      "rainyOk": true,
      "tip": "恐龙骨架加贝林捐赠的非洲动物标本，小娃友好；注意周一周二都闭馆，别按老攻略跑空。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "xa-datangxishi",
@@ -4289,7 +4325,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "建在唐长安城西市遗址上的博物馆，讲丝绸之路做买卖的故事；逛完下楼就是大唐西市街区，吃饭方便。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "xa-archaeology",
@@ -4304,7 +4340,7 @@
      "duration": "半天",
      "rainyOk": true,
      "tip": "全国第一家考古专题馆，讲文物怎么挖出来、怎么修复，比单看展品更有意思；注意是周三闭馆不是周一，离市区略远建议打车。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "xa-yangling",
@@ -4313,13 +4349,13 @@
      "emoji": "🍂",
      "area": "咸阳市渭城区",
      "address": "渭城区正阳街道（西安咸阳国际机场东侧一带）",
-     "openHours": "售票 8:30–17:00，参观 8:30–18:30（17:00 停止入园）；季节调整以官方公告为准",
-     "ticket": "成人票70元（活动期常有优惠价），以官方当日售票为准",
+     "openHours": "旺季售票 8:30–17:00、参观 8:30–18:30（17:00 停止入园）；淡季售票 8:30–16:30、参观 8:30–18:00；季节调整以官方公告为准",
+     "ticket": "成人票旺季70元、淡季（12月–次年2月）55元（活动期常有优惠价），以官方当日售票为准",
      "age": "6–12 岁",
      "duration": "半天",
      "rainyOk": true,
      "tip": "市区出发约40分钟车程，更适合自驾或和机场行程串联；地下外藏坑隔着玻璃脚踩着看陶俑，秋天还有成片银杏林。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "xa-sxlib-gaoxin",
@@ -4334,7 +4370,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "2022年开的新馆，座位多、有专门少儿区域；雨天带娃来看一下午书最稳妥。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "xa-sxlib-children",
@@ -4349,7 +4385,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "紧挨钟楼的少儿专馆，全是儿童绘本和读物；逛完西大街顺路进来，孩子自己挑书看。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "xa-sxlib-changan",
@@ -4364,7 +4400,7 @@
      "duration": "2–3 小时",
      "rainyOk": true,
      "tip": "省图老馆，有少儿阅览室，地铁2号线直达；市中心活动间隙或雨天的好备选。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "xa-shaanxi-art",
@@ -4379,7 +4415,7 @@
      "duration": "2 小时",
      "rainyOk": true,
      "tip": "常有皮影、剪纸等民间艺术展，色彩浓、故事多，给孩子换个口味看手艺。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "xa-qinling-zoo",
@@ -4388,13 +4424,13 @@
      "emoji": "🦁",
      "area": "长安区",
      "address": "长安区滦镇街道（秦岭北麓）",
-     "openHours": "8:30–18:00（停止入园时间以官方当日公告为准）",
-     "ticket": "旺季成人100元（含园内观光车）；学生半价；小火车、投食车等另收费，以官方当日售票为准",
+     "openHours": "旺季（3月1日–11月30日）8:30–18:00，淡季（12月1日–次年2月28日）9:00–17:00（闭园时间以官方当日公告为准）",
+     "ticket": "旺季成人100元、淡季成人80元（含园内观光车）；学生半价；小火车、投食车等另收费，以官方当日售票为准",
      "age": "3–12 岁",
      "duration": "一整天",
      "rainyOk": false,
      "tip": "园子非常大：先坐门票含的观光车看草原区和猛兽区，再慢慢逛步行区和大熊猫馆；尽量10点前到，下午动物容易睡。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "xa-qujiang-ocean",
@@ -4403,13 +4439,13 @@
      "emoji": "🐬",
      "area": "雁塔区",
      "address": "雁塔区曲江二路1号（曲江新区）",
-     "openHours": "9:00–18:30（16:45 停止入馆；旺季延时以官方公告为准）",
+     "openHours": "当季（10月8日–11月30日）9:00–17:30（16:45 停止售票、16:30 停止入园）；旺季延时以官方公告为准",
      "ticket": "通票约180–240元，提前线上预订常有优惠，以官方当日售票为准",
      "age": "3–10 岁",
      "duration": "半天",
      "rainyOk": true,
      "tip": "海洋馆加极地馆两个馆，进门先看海豚表演场次表再排路线；雨天遛娃首选之一。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "xa-huaxia-ocean",
@@ -4418,13 +4454,13 @@
      "emoji": "🐳",
      "area": "灞桥区",
      "address": "灞桥区华文路1518号（华夏文旅西安度假区内）",
-     "openHours": "9:30–18:30（18:00 停止入馆）；周末及节假日延时，以官方公告为准",
+     "openHours": "11月9日–12月31日：周一–周五 9:30–20:30（19:00 停止入园），周六–周日 9:30–21:30（19:30 停止入园）",
      "ticket": "度假区大门免费开放，各场馆单独售票；海洋公园约180元起，以官方当日售票为准",
      "age": "3–12 岁",
      "duration": "半天",
      "rainyOk": true,
      "tip": "度假区2026年升级为「西安华夏城」，大门免费、场馆单买；有极地、梦幻海洋、海狮秀场几个馆，地铁3号线务庄站换乘可达。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "xa-daminggong",
@@ -4439,7 +4475,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "只遛娃放风筝、骑行，免费区就足够大；想认真看唐宫遗址和出土文物，再买票进收费区。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "xa-qujiangchi",
@@ -4454,7 +4490,7 @@
      "duration": "2–3 小时",
      "rainyOk": false,
      "tip": "唐皇家园林的大湖，环湖散步、看黑天鹅；春天曲江池西路一带樱花成片，可以和大唐芙蓉园连着逛。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "xa-furongyuan",
@@ -4469,7 +4505,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "傍晚入园最划算：白天看唐风建筑，晚上看灯光和花车巡游；大型演出《梦回大唐》需另购票。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "xa-hanchenghu",
@@ -4484,7 +4520,7 @@
      "duration": "2–3 小时",
      "rainyOk": false,
      "tip": "汉长安城边上的大湖公园，大风阁里有汉文化展；环湖骑行、坐游船，适合给娃放电。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "xa-shiboyuan",
@@ -4499,7 +4535,7 @@
      "duration": "半天到一整天",
      "rainyOk": false,
      "tip": "418公顷的大园子一次逛不完：先坐观光车分清东区西区，登长安塔看浐灞全景，再挑自然馆、萌宠馆细看。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "xa-botanical",
@@ -4514,7 +4550,7 @@
      "duration": "2–3 小时",
      "rainyOk": false,
      "tip": "注意去的是曲江新园，大雁塔旁的旧园2016年已关闭别跑错；花展期最美，带本观察本让孩子找叶子认植物。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "xa-kunmingchi",
@@ -4529,7 +4565,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "汉武帝练水军的昆明池如今是大湖公园，湖心的汉武大帝像最震撼；傍晚去看落日和灯光，湖边绿道适合孩子骑行。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "xa-chanba-wetland",
@@ -4544,7 +4580,7 @@
      "duration": "半天",
      "rainyOk": false,
      "tip": "灞河边的芦苇荡和水鸟，园里有儿童乐园；冬季免费季去最划算，记得带个望远镜给娃看鸟。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "xa-silkroad-world",
@@ -4559,7 +4595,7 @@
      "duration": "一整天",
      "rainyOk": false,
      "tip": "丝绸之路主题乐园，按沿线国家分区边逛边玩，低龄孩子也有专属小项目；天气不好时大型设备会停开，出发前看官方公告。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "xa-sports-park",
@@ -4574,7 +4610,7 @@
      "duration": "2–3 小时",
      "rainyOk": false,
      "tip": "市政府旁的免费大公园，有儿童活动区和各种球场；周末带娃踢球、轮滑、放风筝都方便，地铁直达。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "xa-children-park",
@@ -4589,7 +4625,7 @@
      "duration": "2–3 小时",
      "rainyOk": false,
      "tip": "1928年就有的老牌儿童公园，门口两只长颈鹿是几代西安娃的童年记忆；项目按次收费，适合小娃短途放电。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     }
    ],
    "events": [
@@ -4603,7 +4639,7 @@
      "periodText": "2026.6.14 – 11.29",
      "age": "6–12 岁",
      "tip": "希腊25家机构借展的250件（套）黄金文物，收费特展约100元；须先抢到本馆预约号，11月29日就结束，想看的优先安排。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     },
     {
      "id": "ev-xa-bluey",
@@ -4627,7 +4663,7 @@
      "periodText": "2026.11.28（周六）19:30",
      "age": "5–12 岁",
      "tip": "《龙猫》《千与千寻》《天空之城》经典配乐现场演奏，票价80–380元；儿童须凭票入场（一人一票），建议提前30分钟到场。",
-     "verifiedDate": "2026-11-14"
+     "verifiedDate": "2026-11-28"
     }
    ]
   },

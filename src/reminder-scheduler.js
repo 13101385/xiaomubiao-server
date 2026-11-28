@@ -48,6 +48,22 @@ function minOf(hhmm) {
   return (isNaN(h) ? 0 : h) * 60 + (isNaN(m) ? 0 : m);
 }
 
+/** PM-197 根治：读用户免打扰时段（前端快照 gp:settings.quietStart/quietEnd，
+ *  随 /api/family/sync 上云，存 family_data.payload）。读不到／未设置 → 不静默。
+ *  失败一律 fail-open（宁可多推，不静默丢提醒）。 */
+async function inQuietHours197(accountId, nowMin) {
+  try {
+    const row = await db.getFamilyData(accountId);
+    if (!row || !row.payload) return false;
+    const payload = typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
+    const s = (payload && payload.data && payload.data['gp:settings']) || {};
+    const qs = minOf(s.quietStart), qe = minOf(s.quietEnd);
+    if (qs === qe) return false;
+    if (qs < qe) return nowMin >= qs && nowMin < qe;
+    return nowMin >= qs || nowMin < qe; // 跨午夜
+  } catch (e) { return false; }
+}
+
 /**
  * 发送一条订阅消息并处理额度：
  * - errcode 0：扣额度，返回 true
@@ -82,6 +98,7 @@ async function scanStartReminders(now) {
     if (delta <= 0 || delta > 10) continue;
     const sub = await db.getReminderSub(t.account_id, TEMPLATES.start);
     if (!sub || !sub.open_id || sub.quota <= 0) continue;
+    if (await inQuietHours197(t.account_id, now.minutes)) continue; // PM-197：免打扰时段内跳过
     const ok = await sendAndSettle(
       t.account_id, TEMPLATES.start, sub.open_id,
       buildStartData(t.child_name, t.task_name, t.date, t.start_time)
@@ -100,6 +117,7 @@ async function scanDueReminders(now) {
     if (await db.hasSentLog(g.account_id, 'due', now.date)) continue;
     const sub = await db.getReminderSub(g.account_id, TEMPLATES.due);
     if (!sub || !sub.open_id || sub.quota <= 0) continue;
+    if (await inQuietHours197(g.account_id, now.minutes)) continue; // PM-197：免打扰时段内跳过
     const ok = await sendAndSettle(
       g.account_id, TEMPLATES.due, sub.open_id,
       buildDueData(g.first_name, g.n, now.date)
@@ -123,6 +141,7 @@ async function scanDailyPush(now) {
   let sent = 0, alreadySent = 0, noSub = 0, noQuota = 0;
   for (const h of targets) {
     if (await db.hasSentLog(h.account_id, 'daily', now.date)) { alreadySent++; continue; }
+    if (await inQuietHours197(h.account_id, now.minutes)) continue; // PM-197：免打扰时段内跳过
     // 每日精选复用开始提醒模板：查同一模板的 openid 与共用额度池
     const sub = await db.getReminderSub(h.account_id, TEMPLATES.start);
     if (!sub || !sub.open_id) {
